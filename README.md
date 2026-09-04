@@ -8,7 +8,7 @@
 **개인 로컬 세컨브레인이 기본**이고, 프로젝트 단위 **CO 영역**은 사내 로컬 서버(CO-Hub)를
 통해 동료와 주고받습니다. 클라우드 컴포넌트 없음.
 
-> 현재 상태: **계획 v0.5 · M0 스파이크 완료.** 검증 코드는 `spikes/`, 결과는 `docs/M0-RESULTS.md`.
+> 현재 상태: **계획 v0.6 · M0 완료.** 사내 W1 실측으로 읽기 경로 확정. 검증 코드는 `spikes/`, 결과는 `docs/M0-RESULTS.md`.
 
 ```
 [PC A]  personal/  +  projects/ACME/ ──┐
@@ -33,8 +33,10 @@
 ## 확정된 선택
 
 - **Electron + TypeScript**, NSIS 설치본
-- LLM은 **Claude Code CLI / Gemini CLI / Codex CLI** 3종 — 사내에서 예외적으로 허용된 통로.
-  로컬 LLM 사용 안 함. 어댑터로 추상화하고 출력 계약은 ChangeSet JSON 한 덩어리로 고정
+- LLM은 **Claude Code(기본) / Gemini(폴백)** — 사내에서 예외적으로 허용된 통로.
+  Codex는 사내 미설치라 인터페이스만 두고 구현 보류. 로컬 LLM 사용 안 함
+- 읽기 경로는 **앱 내장 MCP 서버** (사내 실측으로 `--mcp-config` 경로 확인).
+  쓰기(ChangeSet 생성)는 CLI 실행 + 스키마 강제
 - 신뢰도는 주장 단위 **EXTRACTED / INFERRED / AMBIGUOUS** + 이산 점수 루브릭.
   "이 문장이 원본에 적혀 있었나, 추론인가"를 항상 구분
 - 위키는 **Obsidian 호환** 마크다운 — wikilink, YAML front-matter, 고정 첨부 폴더.
@@ -77,14 +79,22 @@ Jaro-Winkler 임계는 0.92가 아니라 0.96이어야 합니다.
 
 ## 다음 단계
 
-M1 착수 가능. 사내 Windows PC에서 `spikes/cli/windows-check.ps1`을 한 번 돌려 주시면
-남은 변수(사내 정책상 MCP 사용 가능 여부)가 정리됩니다 — M1을 막지는 않습니다.
-
-**출력은 4줄뿐입니다.** 사내에서 텍스트 복사가 안 되어 손으로 옮겨 적을 수 있게 줄였습니다.
+**W1 완료.** 사내 실측 결과:
 
 ```
-1 CLI   claude=2.1.260 gemini=0.58.0 codex=0.153.2
+1 CLI   claude=2.1.260 gemini=0.58.0 codex=X
 2 설정  cfg=OK add=OK
 3 연결  probe=OK 기존=-
-4 mpm   X
+4 mpm   O
 ```
+
+→ **내장 MCP 서버(안 B) 확정.** 남은 항목은 전부 M1과 병행 가능합니다.
+
+두 가지가 계획을 바꿨습니다.
+
+1. **Codex 사내 미설치** — 스키마를 강제할 수 있는 CLI가 Claude Code 하나뿐입니다.
+   Gemini 폴백 경로(앱에서 검증 + 재요청)가 예외가 아니라 **유일한 폴백**이 됐습니다.
+2. **Gemini 폴더 신뢰 게이트** — 신뢰되지 않은 폴더에서 MCP를 끕니다. 우리는 격리 임시
+   디렉터리를 쓰므로 항상 걸립니다. `--skip-trust`로 통과되는 것까지 확인했습니다.
+
+M1 착수 가능.

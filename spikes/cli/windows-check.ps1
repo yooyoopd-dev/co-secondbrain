@@ -67,6 +67,26 @@ if (Has 'claude' -and (Test-Path $probe)) {
   & claude mcp remove m0probe 2>&1 | Out-Null
 }
 
+# ---------- 3.5 Gemini — 폴더 신뢰(folder trust) 게이트 ----------
+# Gemini CLI 는 신뢰되지 않은 폴더에서 MCP 서버를 끈다.
+# 우리는 격리 임시 디렉터리에서 CLI 를 돌리므로 이 게이트에 걸린다. --skip-trust 로 통과되는지 본다.
+$gmRes = 'X'
+if ((Has 'gemini') -and (Test-Path $probe)) {
+  $d = Join-Path $env:TEMP ("m0gem" + [guid]::NewGuid().ToString('N').Substring(0,6))
+  New-Item -ItemType Directory -Path (Join-Path $d '.gemini') -Force | Out-Null
+  $p2 = $probe -replace '\\', '\\\\'
+  "{""mcpServers"":{""m0probe"":{""command"":""node"",""args"":[""$p2""]}}}" |
+    Out-File -FilePath (Join-Path $d '.gemini\settings.json') -Encoding ascii -NoNewline
+  Push-Location $d
+  $gl = (& gemini --skip-trust mcp list 2>&1 | Out-String)
+  Pop-Location
+  if     ($gl -match 'untrusted|Disabled')      { $gmRes = 'TRUST' }
+  elseif ($gl -match 'Auth|auth|API_KEY')       { $gmRes = 'AUTH' }
+  elseif ($gl -match 'm0probe')                 { $gmRes = 'OK' }
+  else                                          { $gmRes = Code $gl }
+  Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 # ---------- 4. mpm (사내 플러그인 로더) ----------
 $mpm = if (Has 'mpm') { 'O' } else { 'X' }
 
@@ -75,9 +95,10 @@ Write-Host ''
 Write-Host '===== 아래 4줄만 적어 주세요 ====='
 Write-Host ("1 CLI   claude={0} gemini={1} codex={2}" -f $cc, $gm, $cx)
 Write-Host ("2 설정  cfg={0} add={1}" -f $cfgRes, $addRes)
-Write-Host ("3 연결  probe={0} 기존={1}" -f $connRes, $otherRes)
+Write-Host ("3 연결  probe={0} 기존={1} gm={2}" -f $connRes, $otherRes, $gmRes)
 Write-Host ("4 mpm   {0}" -f $mpm)
 Write-Host '=================================='
 Write-Host ''
 Write-Host '코드: OK=성공 X=없음 DENY=정책차단 4xx/5xx=HTTP오류'
 Write-Host '      NOEXE=실행파일없음 TMO=시간초과 ERR=기타 SKIP=건너뜀'
+Write-Host '      TRUST=폴더신뢰차단 AUTH=인증필요(MCP는 통과)'

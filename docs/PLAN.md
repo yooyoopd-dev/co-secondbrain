@@ -5,7 +5,7 @@
 > 개인 로컬 세컨브레인이 기본이고, 프로젝트 단위 **CO 영역**은 사내 로컬 서버를 통해
 > 동료와 주고받는다.
 
-상태: **계획 v0.5**. M0 스파이크 완료 + 한국어 출력 품질 설계 반영.
+상태: **계획 v0.6**. M0 완료 — W1 사내 실측으로 읽기 경로 확정.
 
 - 기반 패턴: Karpathy "LLM Wiki" — 원문 전문 확인 후 반영.
   정리본 [`REFERENCE-llm-wiki.md`](REFERENCE-llm-wiki.md), 변형 내역은 그 문서 §9
@@ -22,11 +22,11 @@
 | 항목 | 결정 |
 |---|---|
 | 스택 | Electron + TypeScript, NSIS 설치본 |
-| LLM | **Claude Code CLI / Gemini CLI / Codex CLI** 3종. 사내에서 예외적으로 허용된 통로. 로컬 LLM 미사용 |
+| LLM | **Claude Code(기본) / Gemini(폴백)**. Codex는 **사내 미설치** — 인터페이스만 두고 구현 보류. 로컬 LLM 미사용 |
 | 오디오 | 전사 텍스트만 (`.txt` `.srt` `.vtt`). `.md` 입력 포함 |
 | 개인 금고 | 로컬 일반 폴더. Git 의존성 없음. 앱 내부 스냅샷으로 되돌리기 |
 | 협업 | 개인 금고 ↔ 사내 CO-Hub 서버(사내망 IP) ↔ 동료 |
-| CLI 읽기 경로 | 파일 복사(A) vs 내장 MCP 서버(B). **사내 정책 확인(W1) 하나만 남음.** §7.2 |
+| CLI 읽기 경로 | **내장 MCP 서버(안 B) 확정.** 사내 실측 `cfg=OK`. `--mcp-config` 사용. §7.2 |
 | 그래프 분석 | 축소 도입. **Louvain 채택 확정**(Leiden은 JS에 없음). MinHash/LSH 보류. §8 |
 | 인제스트 단위 | **배치당 장기 세션**. 문서당 프로세스는 고정비 때문에 금지. §4 |
 
@@ -335,7 +335,8 @@ LLM은 텍스트를 먼저 읽고, 필요한 이미지만 **별도 턴에서** �
 interface AgentCli {
   id: 'claude-code' | 'gemini' | 'codex';
   detect(): Promise<{ found: boolean; path?: string; version?: string }>;
-  supportsMcp(): Promise<boolean>;                       // M0 검증 대상
+  supportsSchema: boolean;        // Claude Code·Codex true, Gemini false
+  extraArgs(): string[];          // Gemini 는 '--skip-trust' (폴더 신뢰 게이트)
   run(job: { workdir: string; promptFile: string }): AsyncIterable<Chunk>;
 }
 ```
@@ -423,6 +424,9 @@ M0 실측 (모델 `claude-sonnet-5`, 4줄짜리 한국어 회의록 1건):
 | 전송량 | 밀어 넣은 만큼 전부 | 실제 읽은 것만 |
 | 사내 정책 리스크 | 없음 | **MCP 등록 자체가 막혀 있을 수 있음** |
 
+> **사내 실측 결과(2026-09-04): `cfg=OK` — 안 B를 채택합니다.**
+> `--mcp-config` 경로가 사내 정책에서 열려 있음을 확인했습니다 (`M0-RESULTS.md` §8.2).
+
 **등록 방식은 `--mcp-config`로 확정합니다.** `claude mcp add`(설정 파일에 기록)가 아니라
 호출 단위로 설정 파일을 넘깁니다. 실측으로 두 경로 다 동작하지만 전자를 택하는 이유:
 
@@ -437,10 +441,32 @@ M0 실측 (모델 `claude-sonnet-5`, 4줄짜리 한국어 회의록 1건):
 "디렉터리 스캔 + 설정 파일 병합"은 `--mcp-config`와 같은 계열의 loose 로딩 경로입니다.
 **추측이며 W1이 확인합니다** (`M0-RESULTS.md` §8.1).
 
-**남은 M0 검증:** ① `--mcp-config`가 사내 정책에서 동작하는지
-② Gemini CLI · Codex의 MCP 지원 수준 — Claude Code는 실측으로 확인했지만 나머지 둘은
-**확실하지 않습니다.** 셋 중 일부만 되면 **그 CLI만 안 A로 폴백**합니다 — 어댑터 구조라
-국소 변경입니다.
+### ★ Gemini는 폴더 신뢰 게이트에 걸린다
+
+Gemini CLI는 **신뢰되지 않은 폴더에서 MCP 서버를 끕니다.** 사용자 수준 서버까지 억제합니다.
+
+```
+Warning: MCP servers are configured but disabled because this folder is untrusted.
+```
+
+§7.1이 CLI를 **격리 임시 작업 디렉터리**에서 돌리므로 항상 이 게이트에 걸립니다.
+해결은 **`--skip-trust`** — 이 플래그로 게이트를 통과하는 것까지 확인했습니다.
+다만 인증이 없어 **연결까지는 미검증**입니다.
+
+훅·프로젝트 에이전트도 같은 게이트에 걸리므로, Gemini 어댑터는 모든 호출에
+`--skip-trust`를 붙입니다.
+
+### CLI별 현황 (사내 실측 반영)
+
+| CLI | 스키마 강제 | 사내 상태 | 역할 |
+|---|---|---|---|
+| Claude Code | `--json-schema` (A등급) | 2.1.260 | **기본 공급자** |
+| Gemini | 없음 (B등급) | 0.58.0 | **폴백.** `--skip-trust` 필수 |
+| Codex | `--output-schema` (A등급) | **미설치** | 인터페이스만. 구현·검증 보류 |
+
+**스키마를 강제할 수 있는 CLI가 Claude Code 하나뿐입니다.** v0.4에서 "Gemini만 예외"로
+다뤘던 B등급 경로(앱에서 JSON Schema 검증 + 1회 재요청)가 이제 **유일한 폴백**이므로
+M2에서 함께 구현합니다.
 
 ### 7.3 스키마 파일 이름
 
@@ -450,7 +476,7 @@ M0 실측 (모델 `claude-sonnet-5`, 4줄짜리 한국어 회의록 1건):
 | CLI | 규약 파일명 | 근거 |
 |---|---|---|
 | Claude Code | `CLAUDE.md` | gist 원문 명시 |
-| Codex | `AGENTS.md` | gist 원문 명시 |
+| Codex | `AGENTS.md` | gist 원문 명시. **사내 미설치라 실검증 보류** |
 | Gemini CLI | `GEMINI.md` | **M0 확정** — CLI 번들 내 출현 `GEMINI.md` 227회 vs `AGENTS.md` 1회 |
 
 **Codex 훅 제약 (graphify가 확인한 사실):** Codex Desktop은 `PreToolUse`의
@@ -729,8 +755,8 @@ M1 종료 시점에 LLM 없이도 "문서 통합 검색 + 원문 점프 + 이메
 | 1 | Claude Code 비대화형 규약 | PASS — `--json-schema` + `structured_output` |
 | 2 | Gemini 스키마 파일명 | PASS — `GEMINI.md` 확정 |
 | 3 | CLI 3종 ChangeSet | 부분 — Claude·Codex는 강제 가능, Gemini는 불가 → 등급 A/B |
-| 4 | 사내 MCP 정책 | **검증 불가** — 사내 PC 필요 (W1). 프로브 재설계 완료 |
-| 5 | CLI 3종 MCP 지원 | 부분 — 3종 모두 `mcp` 서브커맨드 보유. **Claude Code는 실제 stdio 서버로 도구 호출까지 실측 성공**, 나머지 둘 미검증 |
+| 4 | 사내 MCP 정책 | **PASS** — 사내 실측 `cfg=OK`. 안 B 확정 |
+| 5 | CLI MCP 지원 | 부분 — Claude Code 도구 호출까지 성공. Gemini는 **폴더 신뢰 게이트**(`--skip-trust` 필요). **Codex 사내 미설치** |
 | 6 | 추출기 실측 | PASS 7/7 |
 | 7 | 한국어 엔티티 유사도 | PASS — 파라미터 2개 수정 |
 | 8 | JS 커뮤니티 탐지 | PASS — Leiden 없음, Louvain 100% |
@@ -741,8 +767,17 @@ M1 종료 시점에 LLM 없이도 "문서 통합 검색 + 원문 점프 + 이메
 ### 잔여: 사내 Windows PC에서 확인할 것
 
 이 스파이크는 Linux 컨테이너에서 돌았고 사내망이 아닙니다.
-`spikes/cli/windows-check.ps1`을 사내 PC에서 실행해 주시면 W1~W3이 정리됩니다.
-**출력은 4줄뿐입니다** — 사내에서 텍스트 복사가 안 되어 손으로 옮겨 적을 수 있게 줄였습니다.
+**W1 완료 (2026-09-04).** 사내 실측 `cfg=OK add=OK probe=OK 기존=- mpm=O codex=X`
+→ §7.2 안 B 확정. 상세는 `M0-RESULTS.md` §8.2.
 
-**W1(사내 정책상 MCP 등록 가능 여부)이 §7.2 안 A/B 결정의 유일한 남은 변수입니다.**
-나머지 W4~W9는 M1 진행과 병행 가능하므로 **M1 착수를 막지 않습니다.**
+남은 항목은 전부 M1과 **병행 가능**하며 착수를 막지 않습니다.
+
+| # | 남은 확인 | 우선순위 |
+|---|---|---|
+| W2 | Windows에서 CLI 비대화형 동작 (`--json-schema` 등) | M2 전 |
+| W3 | **Gemini 폴더 신뢰 통과 후 실제 MCP 연결** — 인증 상태에서 재확인 | M3 전 |
+| W3b | **Codex 설치가 정책상 가능한지** — 불가면 A등급 CLI가 Claude Code 하나로 확정 | M2 전 |
+| W4 | 실제 사내 문서로 추출기 재검증 (`.msg`, 한글 PDF, 수식 xlsx) | M1 중 |
+| W5 | 한국어 엔티티명 100쌍+ 유사도 재측정 | M4 전 |
+| W6 | 스캔본 감지 임계 재보정 | M1 중 |
+| W7~W9 | 허브 SQLite 처리량 · 대용량 blob · nssm 서비스 등록 | M5 전 |

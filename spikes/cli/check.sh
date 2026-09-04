@@ -33,15 +33,31 @@ if has claude && [ -f "$PROBE" ]; then
   claude mcp remove m0probe >/dev/null 2>&1
 fi
 
+# Gemini: 폴더 신뢰(folder trust) 게이트가 MCP를 끈다. --skip-trust 로 통과되는지 본다.
+GMCP=X
+if has gemini && [ -f "$PROBE" ]; then
+  D=$(mktemp -d); mkdir -p "$D/.gemini"
+  printf '{"mcpServers":{"m0probe":{"command":"node","args":["%s"]}}}' "$PROBE" > "$D/.gemini/settings.json"
+  L=$(cd "$D" && timeout 90 gemini --skip-trust mcp list 2>&1)
+  case "$L" in
+    *untrusted*|*Disabled*) GMCP=TRUST;;
+    *Auth*|*auth*|*API_KEY*)  GMCP=AUTH;;
+    *m0probe*)               GMCP=OK;;
+    *)                       GMCP=$(code "$L");;
+  esac
+  rm -rf "$D"
+fi
+
 has mpm && MPM=O || MPM=X
 
 echo
 echo '===== 아래 4줄만 적어 주세요 ====='
 echo "1 CLI   claude=$CC gemini=$GM codex=$CX"
 echo "2 설정  cfg=$CFG add=$ADD"
-echo "3 연결  probe=$CONN 기존=$OTHER"
+echo "3 연결  probe=$CONN 기존=$OTHER gm=$GMCP"
 echo "4 mpm   $MPM"
 echo '=================================='
 echo
 echo '코드: OK=성공 X=없음 DENY=정책차단 4xx/5xx=HTTP오류'
+echo '      TRUST=폴더신뢰차단 AUTH=인증필요(MCP는 통과)'
 echo '      NOEXE=실행파일없음 TMO=시간초과 ERR=기타 SKIP=건너뜀'
