@@ -18,10 +18,13 @@
     "@kenjiuno/msgreader": "^1.24.0",
     "exceljs": "^4.4.0",
     "fast-xml-parser": "^5.0.0",
+    "graphology": "^0.26.0",
+    "graphology-communities-louvain": "^2.0.2",
     "jszip": "^3.10.1",
     "mailparser": "^3.7.0",
     "mammoth": "^1.9.0",
-    "pdfjs-dist": "^5.0.0"
+    "pdfjs-dist": "^5.0.0",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/mailparser": "^3.4.6",
