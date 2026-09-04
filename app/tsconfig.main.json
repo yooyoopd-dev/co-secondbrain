@@ -2,9 +2,13 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
-    "allowImportingTsExtensions": false,
+    "allowImportingTsExtensions": true,
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    "rewriteRelativeImportExtensions": true
   },
-  "include": ["src/core/**/*", "src/main/**/*"]
+  "include": [
+    "src/core/**/*",
+    "src/main/**/*"
+  ]
 }
