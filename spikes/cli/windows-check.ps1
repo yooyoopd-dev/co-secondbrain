@@ -1,43 +1,83 @@
-# M0 W1~W3 — 사내 Windows PC에서 실행. 결과를 붙여넣어 주세요.
-# 아무것도 설치하거나 변경하지 않습니다. MCP 등록 테스트만 등록 후 즉시 제거합니다.
+# M0 W1 검증 — 사내 Windows PC용.
+#
+# 사내에서 텍스트 복사가 안 되므로 결과를 손으로 옮겨 적을 수 있게 4줄만 출력한다.
+# 중간 과정은 전부 숨긴다.
+#
+# 하는 일: 설정을 영구 변경하지 않는다. mcp add 로 만든 항목은 끝에 제거한다.
+# 실행:  powershell -ExecutionPolicy Bypass -File windows-check.ps1
 
-$ErrorActionPreference = 'Continue'
-function Head($t) { Write-Host ""; Write-Host "=== $t ===" -ForegroundColor Cyan }
+$ErrorActionPreference = 'SilentlyContinue'
+$ProgressPreference = 'SilentlyContinue'
 
-Head "1. CLI 설치 및 버전"
-foreach ($c in 'claude','gemini','codex') {
-  $p = (Get-Command $c -ErrorAction SilentlyContinue).Source
-  if ($p) { Write-Host ("  {0,-8} {1}" -f $c, (& $c --version 2>&1 | Select-Object -First 1)) }
-  else    { Write-Host ("  {0,-8} (설치 안 됨)" -f $c) -ForegroundColor Yellow }
+$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+$probe = Join-Path $here 'mcp-probe.mjs'
+
+function Has($n) { [bool](Get-Command $n -ErrorAction SilentlyContinue) }
+function Ver($n) {
+  if (-not (Has $n)) { return 'X' }
+  $v = (& $n --version 2>&1 | Select-Object -First 1) -replace '[^0-9.]', ''
+  if ($v) { return $v } else { return 'OK' }
+}
+# 긴 오류 메시지를 손으로 적을 수 있는 짧은 코드로 줄인다.
+function Code($text) {
+  if (-not $text) { return 'OK' }
+  $t = ($text | Out-String)
+  if ($t -match '\b([45]\d\d)\b') { return $Matches[1] }          # HTTP 상태코드
+  if ($t -match 'ENOENT|not found|없') { return 'NOEXE' }
+  if ($t -match 'denied|permission|policy|정책|차단') { return 'DENY' }
+  if ($t -match 'timeout|timed out') { return 'TMO' }
+  if ($t -match 'Connected|연결됨') { return 'OK' }
+  if ($t -match 'Failed|error|오류|실패') { return 'ERR' }
+  return 'OK'
 }
 
-Head "2. W1 — MCP 등록이 사내 정책상 허용되는가"
-# 이것이 PLAN.md 7.2 안 A/B 결정의 유일한 남은 변수입니다.
-foreach ($c in 'claude','gemini','codex') {
-  if (-not (Get-Command $c -ErrorAction SilentlyContinue)) { continue }
-  Write-Host "  -- $c --"
-  switch ($c) {
-    'claude' { & claude mcp add m0probe -- node -e "0" 2>&1 | ForEach-Object { "    $_" }
-               & claude mcp list 2>&1 | Select-String 'm0probe' | ForEach-Object { "    $_" }
-               & claude mcp remove m0probe 2>&1 | Out-Null }
-    'gemini' { & gemini mcp add m0probe node -e "0" 2>&1 | ForEach-Object { "    $_" }
-               & gemini mcp list 2>&1 | Select-String 'm0probe' | ForEach-Object { "    $_" }
-               & gemini mcp remove m0probe 2>&1 | Out-Null }
-    'codex'  { & codex mcp add m0probe -- node -e "0" 2>&1 | ForEach-Object { "    $_" }
-               & codex mcp list 2>&1 | Select-String 'm0probe' | ForEach-Object { "    $_" }
-               & codex mcp remove m0probe 2>&1 | Out-Null }
-  }
+# ---------- 1. CLI ----------
+$cc = Ver 'claude'; $gm = Ver 'gemini'; $cx = Ver 'codex'
+
+# ---------- 2. --mcp-config (비침습: 설정 파일을 건드리지 않는다) ----------
+$cfgRes = 'SKIP'
+if (Has 'claude' -and (Test-Path $probe)) {
+  $tmp = Join-Path $env:TEMP 'm0probe.json'
+  $p = $probe -replace '\\', '\\\\'
+  "{""mcpServers"":{""m0probe"":{""command"":""node"",""args"":[""$p""]}}}" |
+    Out-File -FilePath $tmp -Encoding ascii -NoNewline
+  # --strict-mcp-config: 이 파일의 서버만 쓴다. 사내에 이미 등록된 서버는 건드리지 않는다.
+  $o = & claude -p "m0_ping 도구를 호출하고 결과만 말해라." --mcp-config $tmp --strict-mcp-config `
+        --allowedTools "mcp__m0probe__m0_ping" --permission-mode dontAsk `
+        --output-format json --disable-slash-commands 2>&1
+  if ($o -match 'pong') { $cfgRes = 'OK' } else { $cfgRes = Code $o }
+  Remove-Item $tmp -ErrorAction SilentlyContinue
 }
-Write-Host "  → 'm0probe'가 목록에 보이면 허용됨(안 B 가능). 오류/차단 메시지면 안 A로 확정." -ForegroundColor Green
 
-Head "3. W3 — 인증 상태"
-if (Get-Command claude -ErrorAction SilentlyContinue) { & claude mcp list 2>&1 | Select-Object -First 3 | ForEach-Object { "    $_" } }
-Write-Host "  gemini / codex 는 각자 login 상태를 확인해 주세요."
+# ---------- 3. mcp add (설정 파일에 기록 — 끝에 제거) ----------
+$addRes = 'SKIP'; $connRes = 'SKIP'; $otherRes = '-'
+if (Has 'claude' -and (Test-Path $probe)) {
+  $a = & claude mcp add m0probe -- node $probe 2>&1
+  if ($a -match 'Added|추가') { $addRes = 'OK' } else { $addRes = Code $a }
 
-Head "4. W2 — 비대화형 스키마 강제 (실제 API 호출 발생)"
-Write-Host "  실행하려면 아래 주석을 해제하세요."
-# $schema = '{"type":"object","properties":{"ok":{"type":"boolean"}},"required":["ok"],"additionalProperties":false}'
-# & claude -p "ok를 true로 반환하라" --output-format json --json-schema $schema --permission-mode dontAsk
+  # mcp list 는 등록된 **모든** 서버를 health-check 한다.
+  # 사내에 이미 있던 HTTP MCP 서버가 502를 내면 여기서 잡힌다 — 우리 프로브 탓이 아니다.
+  $l = (& claude mcp list 2>&1 | Out-String)
+  if ($l -match 'm0probe.*(Connected|연결)') { $connRes = 'OK' }
+  elseif ($l -match 'm0probe') { $connRes = Code $l } else { $connRes = 'NONE' }
 
-Head "완료"
-Write-Host "  위 출력 전체를 복사해 주시면 PLAN.md 7.2를 확정하겠습니다."
+  $others = ($l -split "`n") | Where-Object { $_ -notmatch 'm0probe' -and $_ -match 'Failed|error|[45]\d\d' }
+  if ($others) { $otherRes = Code $others }
+
+  & claude mcp remove m0probe 2>&1 | Out-Null
+}
+
+# ---------- 4. mpm (사내 플러그인 로더) ----------
+$mpm = if (Has 'mpm') { 'O' } else { 'X' }
+
+# ---------- 출력 ----------
+Write-Host ''
+Write-Host '===== 아래 4줄만 적어 주세요 ====='
+Write-Host ("1 CLI   claude={0} gemini={1} codex={2}" -f $cc, $gm, $cx)
+Write-Host ("2 설정  cfg={0} add={1}" -f $cfgRes, $addRes)
+Write-Host ("3 연결  probe={0} 기존={1}" -f $connRes, $otherRes)
+Write-Host ("4 mpm   {0}" -f $mpm)
+Write-Host '=================================='
+Write-Host ''
+Write-Host '코드: OK=성공 X=없음 DENY=정책차단 4xx/5xx=HTTP오류'
+Write-Host '      NOEXE=실행파일없음 TMO=시간초과 ERR=기타 SKIP=건너뜀'
