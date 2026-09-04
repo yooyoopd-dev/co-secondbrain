@@ -135,3 +135,29 @@ User-level servers are also suppressed in untrusted folders to prevent accidenta
 `Skipping project agents due to untrusted folder`.
 
 → Gemini 어댑터는 모든 호출에 `--skip-trust`를 붙입니다.
+
+
+---
+
+## W3 — Gemini 스키마 안정성 (Gemini 인증이 있는 PC에서)
+
+```bash
+node gemini-schema-check.mjs 10
+```
+
+Gemini에는 `--json-schema`(Claude Code)·`--output-schema`(Codex)에 해당하는 플래그가
+**없습니다.** 프롬프트 지시 + 앱 검증 + 1회 재시도로 가야 하는데, 그 성공률이
+[`../../docs/PROVIDER-ROUTING.md`](../../docs/PROVIDER-ROUTING.md) §7 B등급 경로의 전제입니다.
+
+같은 프롬프트를 n회 돌려 유효 JSON 비율을 잽니다. 출력은 3줄입니다.
+
+```
+===== 아래 3줄만 적어 주세요 =====
+1 W3  n=10 json=90% schema=80% anchor=100%
+2 형식 fenced=100% 파싱실패=1
+3 위반 ops[0].path
+==================================
+```
+
+`schema`가 **90% 미만이면** 재시도 비용이 절감분을 잠식할 수 있습니다.
+그 경우 Gemini 라우팅 대상을 줄이거나(§3 표), 프롬프트를 더 강하게 잡아야 합니다.

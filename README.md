@@ -8,7 +8,7 @@
 **개인 로컬 세컨브레인이 기본**이고, 프로젝트 단위 **CO 영역**은 사내 로컬 서버(CO-Hub)를
 통해 동료와 주고받습니다. 클라우드 컴포넌트 없음.
 
-> 현재 상태: **계획 v0.7 · M0 완료.** 사내 W1 실측으로 읽기 경로 확정. 검증 코드는 `spikes/`, 결과는 `docs/M0-RESULTS.md`.
+> 현재 상태: **계획 v0.8 · M0 완료.** 사내 W1 실측으로 읽기 경로 확정. 검증 코드는 `spikes/`, 결과는 `docs/M0-RESULTS.md`.
 
 ```
 [PC A]  personal/  +  projects/ACME/ ──┐
@@ -23,6 +23,7 @@
 |---|---|
 | [docs/M0-RESULTS.md](docs/M0-RESULTS.md) | **M0 실측 결과** — 측정이 계획을 3군데 뒤집음 |
 | [docs/PLAN.md](docs/PLAN.md) | 전체 계획 — 개인/CO 이중 공간, 3계층 위키, 인제스트·질의·린트, CLI 어댑터, 마일스톤 |
+| [docs/PROVIDER-ROUTING.md](docs/PROVIDER-ROUTING.md) | 공급자 라우팅 — 토큰 상한이 다른 CLI를 섞어 쓰기 |
 | [docs/HUB.md](docs/HUB.md) | CO-Hub 서버 — 데이터 모델, API, 동기화 알고리즘, 보안, 운영 |
 | [docs/DESIGN-SYSTEM.md](docs/DESIGN-SYSTEM.md) | 디자인 토큰·컴포넌트 규칙 |
 | [docs/REFERENCE-llm-wiki.md](docs/REFERENCE-llm-wiki.md) | 기반이 된 Karpathy "LLM Wiki" 원문 정리 및 본 설계의 반영·변형 내역 |
@@ -35,6 +36,8 @@
 - **Electron + TypeScript**, NSIS 설치본
 - LLM은 **Claude Code / Gemini / Codex CLI 3종** — 사내에서 예외적으로 허용된 통로.
   앱이 설치된 것을 탐지해 목록에 올린다. 로컬 LLM 사용 안 함
+- **작업 종류별 공급자 라우팅** — 토큰을 많이 먹지만 판단이 가벼운 작업(대량 백로그,
+  Lint 전수 검사, 중복 후보)은 상한이 느슨한 CLI로. 교체는 배치 단위
 - 읽기 경로는 **앱 내장 MCP 서버** (사내 실측으로 `--mcp-config` 경로 확인).
   쓰기(ChangeSet 생성)는 CLI 실행 + 스키마 강제
 - 신뢰도는 주장 단위 **EXTRACTED / INFERRED / AMBIGUOUS** + 이산 점수 루브릭.
