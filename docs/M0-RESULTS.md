@@ -15,7 +15,7 @@
 | 2 | Gemini CLI 스키마 파일명 | **PASS** — `GEMINI.md` 확정 | 추정 → 확정 |
 | 3 | CLI 3종 ChangeSet 생성 | **부분** — Claude·Codex는 스키마 강제, **Gemini는 불가** | CLI별 등급 도입 |
 | 4 | 사내 정책상 MCP 사용 가능 여부 | **PASS** — 사내 실측 `cfg=OK`. **§7.2 안 B 채택 확정** | 본 문서 §8.1 |
-| 5 | CLI 3종 MCP 지원 | **부분** — Claude Code 도구 호출까지 성공. Gemini는 **폴더 신뢰 게이트** 발견. **Codex는 사내 미설치** | 본 문서 §8.1 |
+| 5 | CLI 3종 MCP 지원 | **부분** — Claude Code 도구 호출까지 성공. Gemini는 **폴더 신뢰 게이트** 발견. Codex는 W1 PC에 없어 미검증(지원 유지) | 본 문서 §8.1 |
 | 6 | 추출기 실측 | **PASS 7/7** — 이메일 스레드·xlsx 수식 포함 | — |
 | 7 | 한국어 엔티티 유사도 | **PASS** — 단, 차용한 파라미터 2개가 **한국어에서 오작동** | `PLAN.md` §8.2 수정 |
 | 8 | JS 커뮤니티 탐지 | **PASS** — Leiden 없음 확정, Louvain 100% 정확 | `PLAN.md` §8.1 확정 |
@@ -338,8 +338,8 @@ blob 합계          2.83 GB   (일반 500건 900MB + 대형 10건 1.95GB)
 | `../../../Windows/System32/.../hosts` | `.-.-Windows-System32-drivers-etc-hosts.md` |
 | `..\..\..\secrets` | `.-.-secrets.md` |
 | `CON` (Windows 예약어) | `_CON.md` |
-| `보고서 .md` (NUL) | `보고서.md.md` |
-| `‮exe.txt` (BiDi 위장) | `exe.txt.md` |
+| `보고서\u0000.md` (NUL) | `보고서.md.md` |
+| `\u202Eexe.txt` (BiDi 위장) | `exe.txt.md` |
 | `....` / `   ` | `untitled.md` |
 | `에이콤(주) 계약` | `에이콤(주)-계약.md` |
 
@@ -464,6 +464,8 @@ mpm은 나중에 co-secondbrain 스킬을 사내 배포할 때 **유통 경로**
 4 mpm   O
 ```
 
+`codex=X`는 **그 PC에 설치돼 있지 않다**는 뜻이지 사내에서 안 쓴다는 뜻이 아닙니다 (결론 2).
+
 ### 결론 1 — §7.2 안 B(내장 MCP) 채택 확정
 
 `cfg=OK`. **`--mcp-config` 경로가 사내 정책에서 열려 있습니다.** `add=OK`, `probe=OK`도
@@ -472,26 +474,27 @@ mpm은 나중에 co-secondbrain 스킬을 사내 배포할 때 **유통 경로**
 `mpm=O` — 사내 플러그인 로더가 실제로 배포돼 있고, "차단된 것은 마켓플레이스이지 MCP가
 아니다"라는 §8.1의 판단이 맞았습니다.
 
-### 결론 2 — ★ Codex 미설치. "CLI 3종"이 아니라 실사용 2종
+### 결론 2 — Codex는 그 PC에 없었을 뿐, 지원 대상이다
 
-`codex=X`. 사내 PC에 Codex CLI가 없습니다. 설치가 정책상 불가한지, 아직 안 깐 것인지는
-**확인되지 않았습니다.**
+`codex=X`. **W1을 돌린 PC에 Codex CLI가 없었습니다.**
 
-이게 §7.1의 CLI 등급에 영향을 줍니다.
+⚠️ **정정 (2026-09-04).** 이 결과를 처음에 "사내에서 Codex를 안 쓴다 → 지원 불필요"로
+읽었는데 **틀린 확대 해석**이었습니다. 사내에 Codex 사용 사례가 존재합니다.
+한 대의 PC에 없다는 사실은 **그 PC의 설치 상태**일 뿐 정책이나 사용 여부의 근거가 아닙니다.
 
-| 등급 | CLI | 사내 상태 |
+**CLI 3종을 전부 지원합니다.** 계획은 되돌립니다.
+
+| 등급 | CLI | W1 PC |
 |---|---|---|
-| A — 스키마 강제 | Claude Code (`--json-schema`) | **있음** |
-| A — 스키마 강제 | Codex (`--output-schema`) | **없음** |
+| A — 스키마 강제 | Claude Code (`--json-schema`) | 있음 |
+| A — 스키마 강제 | Codex (`--output-schema`) | 없음 (그 PC만) |
 | B — 강제 불가 | Gemini | 있음 |
 
-**스키마를 강제할 수 있는 CLI가 Claude Code 하나뿐입니다.** 따라서:
+앱은 설치된 CLI를 탐지해 사용 가능한 것만 목록에 올리고, 사용자가 고릅니다.
+미설치 CLI는 회색 표시 + 설치 안내입니다.
 
-- **기본 공급자 = Claude Code** (A등급). 변경 없음
-- **폴백 = Gemini** (B등급). 앱에서 JSON Schema 검증 + 실패 시 1회 재요청이 **필수 경로**가 됨.
-  v0.4에서는 "Gemini만 예외"였는데, 이제 **유일한 폴백**이므로 M2에서 함께 구현해야 함
-- **Codex 어댑터는 M2에서 제외.** 설치돼 있지 않아 검증할 수 없음. 인터페이스는 남겨 두고
-  실제 구현·테스트는 설치가 확인된 뒤로 미룸
+Codex의 `codex exec` · `--output-schema` · MCP 동작은 **Codex가 있는 PC에서 재확인**합니다
+(W3b). 이 환경에서는 `--help` 수준까지만 확인했습니다.
 
 ### 결론 3 — ★ Gemini 폴더 신뢰(folder trust) 게이트
 

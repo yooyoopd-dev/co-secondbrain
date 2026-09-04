@@ -5,7 +5,7 @@
 > 개인 로컬 세컨브레인이 기본이고, 프로젝트 단위 **CO 영역**은 사내 로컬 서버를 통해
 > 동료와 주고받는다.
 
-상태: **계획 v0.6**. M0 완료 — W1 사내 실측으로 읽기 경로 확정.
+상태: **계획 v0.7**. M0 완료 — 읽기 경로 확정, Codex 지원 유지.
 
 - 기반 패턴: Karpathy "LLM Wiki" — 원문 전문 확인 후 반영.
   정리본 [`REFERENCE-llm-wiki.md`](REFERENCE-llm-wiki.md), 변형 내역은 그 문서 §9
@@ -22,7 +22,7 @@
 | 항목 | 결정 |
 |---|---|
 | 스택 | Electron + TypeScript, NSIS 설치본 |
-| LLM | **Claude Code(기본) / Gemini(폴백)**. Codex는 **사내 미설치** — 인터페이스만 두고 구현 보류. 로컬 LLM 미사용 |
+| LLM | **Claude Code CLI / Gemini CLI / Codex CLI** 3종 전부 지원. 사내에서 예외적으로 허용된 통로. 로컬 LLM 미사용 |
 | 오디오 | 전사 텍스트만 (`.txt` `.srt` `.vtt`). `.md` 입력 포함 |
 | 개인 금고 | 로컬 일반 폴더. Git 의존성 없음. 앱 내부 스냅샷으로 되돌리기 |
 | 협업 | 개인 금고 ↔ 사내 CO-Hub 서버(사내망 IP) ↔ 동료 |
@@ -456,17 +456,23 @@ Warning: MCP servers are configured but disabled because this folder is untruste
 훅·프로젝트 에이전트도 같은 게이트에 걸리므로, Gemini 어댑터는 모든 호출에
 `--skip-trust`를 붙입니다.
 
-### CLI별 현황 (사내 실측 반영)
+### CLI별 현황
 
-| CLI | 스키마 강제 | 사내 상태 | 역할 |
+**3종 전부 지원합니다.** W1을 돌린 PC에 Codex가 없었을 뿐이고, 사내에 Codex 사용 사례가
+있으므로 지원 대상에서 빼지 않습니다.
+
+| CLI | 스키마 강제 | W1 PC | 특이사항 |
 |---|---|---|---|
 | Claude Code | `--json-schema` (A등급) | 2.1.260 | **기본 공급자** |
-| Gemini | 없음 (B등급) | 0.58.0 | **폴백.** `--skip-trust` 필수 |
-| Codex | `--output-schema` (A등급) | **미설치** | 인터페이스만. 구현·검증 보류 |
+| Codex | `--output-schema` (A등급) | 미설치 | `codex exec`. **W1 PC에 없었을 뿐 지원 대상** |
+| Gemini | 없음 (B등급) | 0.58.0 | `--skip-trust` 필수. B등급 경로 필요 |
 
-**스키마를 강제할 수 있는 CLI가 Claude Code 하나뿐입니다.** v0.4에서 "Gemini만 예외"로
-다뤘던 B등급 경로(앱에서 JSON Schema 검증 + 1회 재요청)가 이제 **유일한 폴백**이므로
-M2에서 함께 구현합니다.
+**A등급 2종 · B등급 1종**입니다. 앱은 설치된 CLI를 탐지해(`detect()`) 사용 가능한 것만
+목록에 올리고, 사용자가 고릅니다. 미설치 CLI는 회색 표시하고 설치 안내만 띄웁니다.
+
+우선순위: 스키마를 강제할 수 있는 A등급(Claude Code · Codex)이 기본, Gemini는 B등급 경로
+(앱에서 JSON Schema 검증 + 실패 시 1회 재요청)를 거칩니다. **B등급 경로는 M2에서 함께
+구현합니다** — Gemini만 쓰는 사용자가 있을 수 있으므로 선택 기능이 아닙니다.
 
 ### 7.3 스키마 파일 이름
 
@@ -476,7 +482,7 @@ M2에서 함께 구현합니다.
 | CLI | 규약 파일명 | 근거 |
 |---|---|---|
 | Claude Code | `CLAUDE.md` | gist 원문 명시 |
-| Codex | `AGENTS.md` | gist 원문 명시. **사내 미설치라 실검증 보류** |
+| Codex | `AGENTS.md` | gist 원문 명시. **W1 PC에 없어 실검증만 보류**(W3b) |
 | Gemini CLI | `GEMINI.md` | **M0 확정** — CLI 번들 내 출현 `GEMINI.md` 227회 vs `AGENTS.md` 1회 |
 
 **Codex 훅 제약 (graphify가 확인한 사실):** Codex Desktop은 `PreToolUse`의
@@ -756,7 +762,7 @@ M1 종료 시점에 LLM 없이도 "문서 통합 검색 + 원문 점프 + 이메
 | 2 | Gemini 스키마 파일명 | PASS — `GEMINI.md` 확정 |
 | 3 | CLI 3종 ChangeSet | 부분 — Claude·Codex는 강제 가능, Gemini는 불가 → 등급 A/B |
 | 4 | 사내 MCP 정책 | **PASS** — 사내 실측 `cfg=OK`. 안 B 확정 |
-| 5 | CLI MCP 지원 | 부분 — Claude Code 도구 호출까지 성공. Gemini는 **폴더 신뢰 게이트**(`--skip-trust` 필요). **Codex 사내 미설치** |
+| 5 | CLI MCP 지원 | 부분 — Claude Code 도구 호출까지 성공. Gemini는 **폴더 신뢰 게이트**(`--skip-trust` 필요). Codex는 W1 PC에 없어 **미검증**(지원은 유지) |
 | 6 | 추출기 실측 | PASS 7/7 |
 | 7 | 한국어 엔티티 유사도 | PASS — 파라미터 2개 수정 |
 | 8 | JS 커뮤니티 탐지 | PASS — Leiden 없음, Louvain 100% |
@@ -776,7 +782,7 @@ M1 종료 시점에 LLM 없이도 "문서 통합 검색 + 원문 점프 + 이메
 |---|---|---|
 | W2 | Windows에서 CLI 비대화형 동작 (`--json-schema` 등) | M2 전 |
 | W3 | **Gemini 폴더 신뢰 통과 후 실제 MCP 연결** — 인증 상태에서 재확인 | M3 전 |
-| W3b | **Codex 설치가 정책상 가능한지** — 불가면 A등급 CLI가 Claude Code 하나로 확정 | M2 전 |
+| W3b | **Codex가 있는 PC에서 `codex exec` + `--output-schema` + MCP 검증** | M2 중 |
 | W4 | 실제 사내 문서로 추출기 재검증 (`.msg`, 한글 PDF, 수식 xlsx) | M1 중 |
 | W5 | 한국어 엔티티명 100쌍+ 유사도 재측정 | M4 전 |
 | W6 | 스캔본 감지 임계 재보정 | M1 중 |
