@@ -19,6 +19,9 @@ import type { ProviderId } from './types.ts';
  * 모르는 값을 지어내는 것보다 표본의 `app` 을 두는 편이 낫다.
  */
 export function stampProvider(cs: ChangeSet, provider: ProviderId, now: string = new Date().toISOString()): ChangeSet {
+  // 스키마를 강제해도 `ops` 가 없는 응답이 올 수 있다. 여기서 터지면 어댑터의 catch 가
+  // "CLI 를 띄우지 못했습니다" 로 잘못 보고한다. 판정은 관문에 맡기고 그대로 넘긴다.
+  if (!Array.isArray(cs?.ops)) return cs;
   return {
     ...cs,
     ops: cs.ops.map((op) => {

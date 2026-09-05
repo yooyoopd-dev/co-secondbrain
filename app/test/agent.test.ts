@@ -595,3 +595,11 @@ test('라우팅 — 전환할 곳이 없으면 막는다', () => {
   assert.equal(r.ok, false);
   assert.match(r.ok === false ? r.reason : '', /전환할 공급자가 없습니다/);
 });
+
+test('스탬프 — ops 가 없는 응답에서 터지지 않는다. 판정은 관문이 한다', () => {
+  // 실제로 터뜨렸다. 어댑터의 catch 가 "CLI 를 띄우지 못했습니다" 로 잘못 보고했다.
+  for (const bad of [{ ok: true }, {}, { ops: null }, null]) {
+    assert.doesNotThrow(() => stampProvider(bad as unknown as ChangeSet, 'gemini', NOW));
+    assert.deepEqual(stampProvider(bad as unknown as ChangeSet, 'gemini', NOW), bad);
+  }
+});
