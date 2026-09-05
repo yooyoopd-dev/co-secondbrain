@@ -9,7 +9,8 @@ import { IPC } from './ipc.ts';
 import { Store } from './store.ts';
 import { SOURCE_KIND_BY_EXT } from '../core/types.ts';
 
-const store = new Store();
+// 지출은 Vault 가 아니라 계정 단위로 쌓는다. Vault 별로 세면 상한을 두 배로 쓴다.
+const store = new Store({ spendFile: path.join(app.getPath('userData'), 'spend.json') });
 
 /** 개발 중에는 vite 서버를, 배포본에서는 빌드된 파일을 연다. */
 const DEV_URL = process.env['SB_DEV_URL'] ?? null;
@@ -88,6 +89,8 @@ function registerIpc(): void {
   ipcMain.handle(IPC.propose, (_e, id: string) => store.propose(id));
   ipcMain.handle(IPC.applyReview, (_e, approved: string[]) => store.applyReview(approved));
   ipcMain.handle(IPC.discardReview, () => store.discardReview());
+  ipcMain.handle(IPC.spendStatus, () => store.spendStatus());
+  ipcMain.handle(IPC.plan, () => store.plan());
 }
 
 /* ------------------------------------------------------------------ */

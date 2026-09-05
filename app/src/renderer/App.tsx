@@ -5,6 +5,8 @@ import type { Extraction, SearchHit } from '../core/types.ts';
 import type { SbApi, IngestResult, SourceSummary } from '../main/ipc.ts';
 import type { VaultConfig } from '../core/vault.ts';
 import type { Review } from '../core/review.ts';
+import type { Status } from '../core/spend.ts';
+import { summarize } from '../core/spend.ts';
 import ReviewOverlay from './Review.tsx';
 
 declare global {
@@ -26,6 +28,8 @@ export default function App() {
   // 변경안은 승인 전까지 여기(그리고 main 의 메모리)에만 있다. 디스크에는 없다.
   const [review, setReview] = useState<Review | null>(null);
   const [reviewNote, setReviewNote] = useState<string | null>(null);
+  const [spend, setSpend] = useState<Status[]>([]);
+  const [pending, setPending] = useState<number | null>(null);
 
   useEffect(() => {
     void window.sb.currentVault().then(setVault);
@@ -33,6 +37,8 @@ export default function App() {
 
   const refresh = useCallback(async () => {
     setSources(await window.sb.listSources());
+    setSpend(await window.sb.spendStatus());
+    setPending((await window.sb.plan()).fresh.length);
   }, []);
 
   useEffect(() => {
@@ -92,6 +98,7 @@ export default function App() {
       } else {
         setReviewNote(r.error);
       }
+      await refresh();
     } finally {
       setBusy(false);
     }
@@ -135,6 +142,8 @@ export default function App() {
         onIngest={ingest}
         onOpen={() => openVault('open')}
         onSelect={(id) => jump(id, null)}
+        spend={spend}
+        pending={pending}
       />
       <Results query={query} setQuery={setQuery} hits={hits} onJump={jump} sourceCount={sources.length} />
       <Viewer viewer={viewer} busy={busy} note={reviewNote} onPropose={propose} />
@@ -185,6 +194,8 @@ function Rail({
   onIngest,
   onOpen,
   onSelect,
+  spend,
+  pending,
 }: {
   vault: VaultConfig;
   sources: SourceSummary[];
@@ -192,6 +203,8 @@ function Rail({
   onIngest: () => void;
   onOpen: () => void;
   onSelect: (id: string) => void;
+  spend: Status[];
+  pending: number | null;
 }) {
   // 개인 금고와 CO 영역을 색·아이콘·접두로 구분한다 (DESIGN-SYSTEM.md)
   const isCo = vault.hub !== null;
@@ -212,7 +225,9 @@ function Rail({
       </div>
 
       <div style={S.railBody}>
-        <div style={S.sectionLabel}>원본 {sources.length}건</div>
+        <div style={S.sectionLabel}>
+          원본 {sources.length}건{pending !== null && pending > 0 ? ` · 제안 대기 ${pending}건` : ''}
+        </div>
         {busy && sources.length === 0 && (
           <div style={{ padding: 'var(--s)' }}>
             {[0, 1, 2].map((i) => (
@@ -234,6 +249,15 @@ function Rail({
             <span style={{ color: 'var(--fg-faint)' }}>docx · xlsx · pptx · pdf · eml · vtt · md</span>
           </div>
         )}
+      </div>
+
+      {/* 달러가 아니라 남은 문서 수를 먼저 보여준다 (M2-PLAN.md §3.4) */}
+      <div style={S.spendBar}>
+        {spend.map((s) => (
+          <div key={s.provider} style={{ color: s.level === 'over' ? 'var(--danger)' : s.level === 'warn' ? 'var(--warn)' : 'var(--fg-faint)' }}>
+            {summarize(s)}
+          </div>
+        ))}
       </div>
     </aside>
   );
@@ -425,6 +449,7 @@ const S = {
   kindTag: { fontFamily: 'var(--mono)', fontSize: '0.6875rem', color: 'var(--fg-faint)', width: 34 },
   sourceName: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.875rem' },
   chunkCount: { fontFamily: 'var(--mono)', fontSize: '0.75rem', color: 'var(--fg-faint)' },
+  spendBar: { borderTop: '1px solid var(--border)', padding: '6px var(--s)', fontSize: '0.75rem', fontFamily: 'var(--mono)' },
 
   center: { display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-surface)' },
   searchBar: { padding: 'var(--s)', borderBottom: '1px solid var(--border)' },

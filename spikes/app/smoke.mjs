@@ -58,10 +58,13 @@ await win.waitForLoadState('domcontentloaded');
 ok('창 제목', (await win.title()) === 'co-secondbrain', await win.title());
 ok('첫 화면이 그려진다', (await win.locator('text=새 Vault 만들기').count()) === 1);
 
-// contextBridge 표면 — ipc.ts 의 SbApi 에 적힌 것이 전부여야 한다
+// contextBridge 표면 — ipc.ts 에 적힌 것이 전부여야 한다.
+// 기대 목록을 손으로 적으면 채널이 늘 때마다 낡는다. 실제로 한 번 낡았다.
+const ipcSrc = fs.readFileSync(path.join(APP, 'src/main/ipc.ts'), 'utf8');
+const block = ipcSrc.slice(ipcSrc.indexOf('export const IPC'));
+const expected = [...block.slice(0, block.indexOf('} as const')).matchAll(/^\s{2}(\w+):\s*'sb:/gm)].map((m) => m[1]).sort();
 const surface = await win.evaluate(() => Object.keys(window.sb ?? {}).sort());
-const expected = ['applyReview', 'currentVault', 'discardReview', 'listSources', 'pickAndIngest', 'pickVault', 'propose', 'readSource', 'search'].sort();
-ok('window.sb 표면이 SbApi 와 같다', JSON.stringify(surface) === JSON.stringify(expected), surface);
+ok('window.sb 표면이 ipc.ts 와 같다', expected.length > 5 && JSON.stringify(surface) === JSON.stringify(expected), { surface, expected });
 ok('노출된 것 말고는 없다', await win.evaluate(() => typeof window.require === 'undefined' && typeof window.process === 'undefined'));
 
 // IPC 왕복 — Vault 를 안 열었으니 null 과 빈 배열이 정답이다

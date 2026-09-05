@@ -256,11 +256,29 @@ test('두 열 — 행 수가 원래 diff 의 정보를 잃지 않는다', () => 
 
 /* ---------------- 렌더러 안전성 ---------------- */
 
-test('렌더러가 쓰는 모듈은 Node 모듈을 끌고 오지 않는다', async () => {
-  // 한 번 어겼다 — review.ts 를 렌더러에서 부르자 번들이 node:crypto 를 끌고 와 빌드가 깨졌다.
-  for (const f of ['../src/core/approve.ts', '../src/core/diff.ts']) {
-    const src = await fs.readFile(new URL(f, import.meta.url), 'utf8');
-    const bad = [...src.matchAll(/^\s*import\s+(?!type\b)[^;]*from\s+'(node:[^']+)'/gm)].map((m) => m[1]);
-    assert.deepEqual(bad, [], `${f} 가 ${bad.join(', ')} 를 씁니다`);
+test('렌더러가 끌고 오는 모듈에 Node 모듈이 없다', async () => {
+  // 두 번 어겼다 — review.ts 로 node:crypto 가, spend.ts 로 node:fs 가 번들에 들어왔다.
+  // 그래서 목록을 손으로 적지 않고 렌더러에서 시작해 실제 임포트를 따라간다.
+  const rendererDir = new URL('../src/renderer/', import.meta.url);
+  const seen = new Set<string>();
+  const offenders: string[] = [];
+
+  const valueImports = (src: string) =>
+    [...src.matchAll(/^\s*import\s+(?!type\b)[^;]*?from\s+'([^']+)'/gm)].map((m) => m[1]!);
+
+  const walk = async (fileUrl: URL): Promise<void> => {
+    if (seen.has(fileUrl.href)) return;
+    seen.add(fileUrl.href);
+    const src = await fs.readFile(fileUrl, 'utf8');
+    for (const spec of valueImports(src)) {
+      if (spec.startsWith('node:')) offenders.push(`${fileUrl.pathname.split('/').pop()} → ${spec}`);
+      else if (spec.startsWith('.')) await walk(new URL(spec, fileUrl));
+    }
+  };
+
+  for (const name of await fs.readdir(rendererDir)) {
+    if (name.endsWith('.tsx') || name.endsWith('.ts')) await walk(new URL(name, rendererDir));
   }
+  assert.ok(seen.size > 3, `렌더러 파일을 못 찾았습니다: ${seen.size}`);
+  assert.deepEqual(offenders, []);
 });

@@ -3,6 +3,8 @@ import type { Extraction, SearchHit } from '../core/types.ts';
 import type { VaultConfig } from '../core/vault.ts';
 import type { Review } from '../core/review.ts';
 import type { ApplyResult } from '../core/changeset.ts';
+import type { WorkPlan } from '../core/cache.ts';
+import type { Status } from '../core/spend.ts';
 
 export interface IngestResult {
   ok: string[];
@@ -36,6 +38,10 @@ export interface SbApi {
   /** 관문 8 — 사람이 승인한 경로만 적용한다 */
   applyReview(approved: string[]): Promise<ApplyResult>;
   discardReview(): Promise<void>;
+  /** 공급자별 이번 달 소비와 남은 문서 수 */
+  spendStatus(): Promise<Status[]>;
+  /** 아직 변경안을 안 만든 원본. 이름만 바뀐 것은 빠진다 */
+  plan(): Promise<WorkPlan>;
 }
 
 export const IPC = {
@@ -48,4 +54,6 @@ export const IPC = {
   propose: 'sb:propose',
   applyReview: 'sb:applyReview',
   discardReview: 'sb:discardReview',
+  spendStatus: 'sb:spendStatus',
+  plan: 'sb:plan',
 } as const;

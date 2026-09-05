@@ -12,6 +12,10 @@ import { buildReview, selectOps } from '../core/review.ts';
 import { snapshot } from '../core/history.ts';
 import { readWikiPages, writeIndex } from '../core/wiki.ts';
 import { createCli } from '../core/agent/index.ts';
+import { route, type TaskKind } from '../core/agent/router.ts';
+import { hashContent, markProposed, planWork, readManifest, recordSource, writeManifest, type Manifest, type SourceState, type WorkPlan } from '../core/cache.ts';
+import { DEFAULT_MONTHLY_USD, EMPTY_LOG, add as addSpend, status as spendStatus, type Limits, type SpendLog, type Status } from '../core/spend.ts';
+import { read as readSpend, write as writeSpend } from '../core/spend-file.ts';
 import type { ProviderId } from '../core/agent/types.ts';
 import { CHANGESET_SCHEMA } from '../core/agent/schema.ts';
 import { conventionFile, promptFor, type WikiRef } from '../core/agent/ingest.ts';
@@ -25,6 +29,18 @@ export class Store {
   #index: SearchIndex | null = null;
   /** 검토 중인 변경안. 사람이 승인하기 전까지 여기 머문다 — 디스크에 없다 */
   #pending: ChangeSet | null = null;
+  #manifest: Manifest = { version: 1, entries: {} };
+  /** 지출은 Vault 가 아니라 앱 단위로 쌓는다. 계정 상한은 Vault 마다가 아니다 */
+  readonly #spendFile: string | null;
+  #spend: SpendLog = EMPTY_LOG;
+  /** 상한은 사용자가 넣어야 한다. 아직 설정 화면이 없어 기본값만 있다 (PROVIDER-ROUTING.md §5.2) */
+  #limits: Limits = { 'claude-code': DEFAULT_MONTHLY_USD };
+  /** detect() 는 프로세스를 띄운다. 한 번만 한다 */
+  #available: ProviderId[] | null = null;
+
+  constructor(opts: { spendFile?: string } = {}) {
+    this.#spendFile = opts.spendFile ?? null;
+  }
 
   get vault(): Vault | null {
     return this.#vault;
@@ -38,6 +54,8 @@ export class Store {
     this.#db = new DatabaseSync(safeJoin(v.root, '.sb/catalog.sqlite'));
     this.#index = new SearchIndex(this.#db as unknown as Db);
     await this.#reindexFromDisk();
+    this.#manifest = await readManifest(v);
+    if (this.#spendFile) this.#spend = await readSpend(this.#spendFile);
     return v;
   }
 
@@ -65,6 +83,12 @@ export class Store {
           mails.push((await extractEmail(dest, ext.sourceId)).meta);
         }
         this.#index!.indexSource(ext.sourceId, ext.chunks);
+        // 내용 해시로 기억한다. 이름이 바뀌어도 같은 문서로 본다 (PLAN.md §9.1)
+        this.#manifest = recordSource(this.#manifest, {
+          sourceId: ext.sourceId,
+          filename,
+          contentHash: hashContent(await fs.readFile(dest)),
+        });
         res.ok.push(filename);
         res.relations += ext.relations.length;
         for (const w of ext.warnings) res.warnings.push({ filename, warning: w });
@@ -73,6 +97,9 @@ export class Store {
         res.failed.push({ filename, reason: e instanceof Error ? e.message : String(e) });
       }
     }
+
+    // manifest 는 성공했을 때만 쓴다 (PLAN.md §9.1)
+    await writeManifest(v, this.#manifest);
 
     // 스레드 관계는 여러 통을 모아야 나온다. 기존에 넣어 둔 메일까지 함께 본다.
     if (mails.length) {
@@ -116,12 +143,57 @@ export class Store {
    * 원본 하나로 ChangeSet 을 받아 검토 재료를 만든다. **디스크는 건드리지 않는다.**
    * 실패해도 던지지 않는다 — 사유를 화면에 그대로 띄우는 편이 낫다.
    */
-  async propose(sourceId: string, provider: ProviderId = 'claude-code'): Promise<ProposeResult> {
+  /** 무엇을 CLI 로 보내야 하는가. 이름만 바뀐 것과 이미 만든 것은 빠진다 (PLAN.md §9.1) */
+  async plan(): Promise<WorkPlan> {
+    const v = this.#require();
+    const states: SourceState[] = [];
+    for (const s of await this.listSources()) {
+      try {
+        states.push({
+          sourceId: s.sourceId,
+          filename: s.filename,
+          contentHash: hashContent(await fs.readFile(safeJoin(v.root, 'sources', s.filename))),
+        });
+      } catch {
+        // 원본이 지워졌으면 건너뛴다
+      }
+    }
+    return planWork(this.#manifest, states);
+  }
+
+  /** 설치·인증된 공급자. detect() 는 프로세스를 띄우므로 한 번만 본다. */
+  async available(): Promise<ProviderId[]> {
+    if (this.#available) return this.#available;
+    const found: ProviderId[] = [];
+    for (const id of ['claude-code', 'gemini'] as const) {
+      try {
+        if ((await createCli(id).detect()).found) found.push(id);
+      } catch {
+        // 어댑터가 없는 공급자는 건너뛴다
+      }
+    }
+    this.#available = found;
+    return found;
+  }
+
+  /** 공급자별 이번 달 소비와 남은 문서 수. 화면에 띄운다. */
+  spendStatus(now: string = new Date().toISOString()): Status[] {
+    return (['claude-code', 'gemini'] as const).map((p) => spendStatus(this.#spend, this.#limits, p, now));
+  }
+
+  async propose(sourceId: string, provider?: ProviderId, kind: TaskKind = 'ingest.single'): Promise<ProposeResult> {
     const v = this.#require();
     const ext = await this.readSource(sourceId);
     if (!ext) return { ok: false, error: `원본이 없습니다: ${sourceId}` };
 
-    const cli = createCli(provider);
+    const now = new Date().toISOString();
+    const overLimit = this.spendStatus(now).filter((s) => s.level === 'over').map((s) => s.provider);
+    const picked = provider
+      ? { ok: true as const, provider, fallback: false, why: '호출자 지정' }
+      : route(kind, { available: await this.available(), overLimit });
+    if (!picked.ok) return { ok: false, error: picked.reason };
+
+    const cli = createCli(picked.provider);
     // 규약 파일은 배치 내내 같은 바이트여야 캐시가 산다 (M2-PLAN.md §2.1).
     // 이름은 CLI 마다 다르다 (PLAN.md §7.3).
     const agentsMd = await fs.readFile(safeJoin(v.root, 'schema/AGENTS.md'), 'utf8');
@@ -131,7 +203,15 @@ export class Store {
         { workdir: wd.root, prompt: promptFor(ext, await this.#wikiRefs()) },
         CHANGESET_SCHEMA,
       );
+      // 실패해도 돈은 나갔다. 성공만 세면 계량기가 실제보다 낮게 나온다.
+      this.#spend = addSpend(this.#spend, picked.provider, r.usage, now);
+      if (this.#spendFile) await writeSpend(this.#spendFile, this.#spend);
       if (!r.ok) return { ok: false, error: r.error ?? '변경안을 받지 못했습니다' };
+
+      const hash = hashContent(await fs.readFile(safeJoin(v.root, 'sources', ext.filename)));
+      this.#manifest = markProposed(this.#manifest, hash, picked.provider, now);
+      await writeManifest(v, this.#manifest);
+
       this.#pending = r.data as ChangeSet;
       return { ok: true, review: await buildReview(v, this.#pending, await this.#anchors()), costUsd: r.usage.costUsd };
     } finally {
