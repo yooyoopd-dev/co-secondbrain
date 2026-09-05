@@ -8,9 +8,19 @@ import path from 'node:path';
 import { IPC } from './ipc.ts';
 import { Store } from './store.ts';
 import { SOURCE_KIND_BY_EXT } from '../core/types.ts';
+import type { Answer } from '../core/query.ts';
 
 // 지출은 Vault 가 아니라 계정 단위로 쌓는다. Vault 별로 세면 상한을 두 배로 쓴다.
-const store = new Store({ spendFile: path.join(app.getPath('userData'), 'spend.json') });
+const store = new Store({
+  spendFile: path.join(app.getPath('userData'), 'spend.json'),
+  // CLI 가 MCP 서버를 서브프로세스로 띄운다. 패키징본에는 node 가 없으므로
+  // Electron 자신을 ELECTRON_RUN_AS_NODE 로 돌린다 (PLAN.md §7.2).
+  mcpLaunch: (vaultRoot) => ({
+    command: process.execPath,
+    args: [path.join(import.meta.dirname, 'mcp-entry.js'), vaultRoot],
+    env: { ELECTRON_RUN_AS_NODE: '1' },
+  }),
+});
 
 /** 개발 중에는 vite 서버를, 배포본에서는 빌드된 파일을 연다. */
 const DEV_URL = process.env['SB_DEV_URL'] ?? null;
@@ -91,6 +101,8 @@ function registerIpc(): void {
   ipcMain.handle(IPC.discardReview, () => store.discardReview());
   ipcMain.handle(IPC.spendStatus, () => store.spendStatus());
   ipcMain.handle(IPC.plan, () => store.plan());
+  ipcMain.handle(IPC.ask, (_e, q: string) => store.ask(q));
+  ipcMain.handle(IPC.archiveAnswer, (_e, q: string, a: Answer) => store.archiveAnswer(q, a));
 }
 
 /* ------------------------------------------------------------------ */

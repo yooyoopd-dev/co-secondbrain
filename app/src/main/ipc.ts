@@ -5,6 +5,7 @@ import type { Review } from '../core/review.ts';
 import type { ApplyResult } from '../core/changeset.ts';
 import type { WorkPlan } from '../core/cache.ts';
 import type { Status } from '../core/spend.ts';
+import type { Answer } from '../core/query.ts';
 
 export interface IngestResult {
   ok: string[];
@@ -25,6 +26,10 @@ export type ProposeResult =
   | { ok: true; review: Review; costUsd: number }
   | { ok: false; error: string };
 
+export type AskResult =
+  | { ok: true; question: string; answer: Answer; costUsd: number }
+  | { ok: false; error: string };
+
 /** preload 가 window.sb 로 노출하는 표면. 이 목록 밖의 것은 렌더러가 못 부른다. */
 export interface SbApi {
   pickVault(mode: 'open' | 'create'): Promise<VaultConfig | null>;
@@ -42,6 +47,10 @@ export interface SbApi {
   spendStatus(): Promise<Status[]>;
   /** 아직 변경안을 안 만든 원본. 이름만 바뀐 것은 빠진다 */
   plan(): Promise<WorkPlan>;
+  /** 위키에 묻는다. 답변은 디스크에 안 쓴다 */
+  ask(question: string): Promise<AskResult>;
+  /** 답변을 보관 대기로 올린다. 승인해야 synthesis 페이지가 된다 */
+  archiveAnswer(question: string, answer: Answer): Promise<Review>;
 }
 
 export const IPC = {
@@ -56,4 +65,6 @@ export const IPC = {
   discardReview: 'sb:discardReview',
   spendStatus: 'sb:spendStatus',
   plan: 'sb:plan',
+  ask: 'sb:ask',
+  archiveAnswer: 'sb:archiveAnswer',
 } as const;

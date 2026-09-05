@@ -89,11 +89,13 @@ IP 주소)가 팀원 사이를 중계합니다. CO-Hub는 SQLite와 블롭 저�
 | **diff 검토 UI** — 관문 8. 승인해야 디스크에 닿는다 | 완료 |
 | Electron 창 + IPC | 완료 (Windows 실렌더링은 미검증) |
 | 시맨틱 캐시 · 지출 계량기 · 공급자 라우팅 | 완료 |
-| 질의 인용 답변 · 내장 MCP 서버 · Lint LLM 판단 4종 | 미착수 |
+| 내장 MCP 서버 — 에이전트가 위키를 당겨 간다 | 완료 |
+| 질의 → 인용 답변 → `synthesis/` 보관 | 완료 |
+| Lint LLM 판단 4종 · Marp 내보내기 | 미착수 |
 | CO-Hub 서버, Contribute/Adopt, 동기화 | 미착수 |
 | Codex 어댑터 · NSIS 패키징 | 사내 환경 필요 |
 
-자동 검사 247건이 통과합니다. 세부 마일스톤은 [`docs/PLAN.md`](docs/PLAN.md) §12,
+자동 검사 282건이 통과합니다. 세부 마일스톤은 [`docs/PLAN.md`](docs/PLAN.md) §12,
 남은 작업은 [`docs/ROADMAP.md`](docs/ROADMAP.md), 구현 중 나온 측정은
 [`docs/M1-NOTES.md`](docs/M1-NOTES.md)와 [`docs/M2-PLAN.md`](docs/M2-PLAN.md)를 보십시오.
 
@@ -171,8 +173,6 @@ Jaro-Winkler 임계는 0.92가 아니라 0.96이어야 합니다.
 
 | # | 남은 작업 | 구분 |
 |---|---|---|
-| 10 | 내장 MCP 서버 (`get_page`·`search`·`neighbors`·`path`) | **A** |
-| 11 | 질의 → 인용 답변 + `synthesis/` 보관 | **A** |
 | 12 | Lint LLM 판단 4종 — 모순·낡은 주장·없는 페이지·데이터 공백 | **A** |
 | 13 | Marp 내보내기 | **A** |
 | 14 | "편집 후 승인" 편집기 | **A** |

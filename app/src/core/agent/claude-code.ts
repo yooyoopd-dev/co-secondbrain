@@ -44,7 +44,9 @@ interface CliJson {
 export function buildArgv(job: AgentJob, schema: object, sessionId: string): string[] {
   const argv = ['-p', '--output-format', 'json', '--json-schema', JSON.stringify(schema)];
   argv.push(job.resumeSessionId ? '--resume' : '--session-id', job.resumeSessionId ?? sessionId);
+  // 사내 PC 에 이미 등록된 MCP 서버를 격리한다. 우리 것만 붙는다.
   argv.push('--strict-mcp-config');
+  if (job.mcp) argv.push('--mcp-config', job.mcp.configPath, '--allowedTools', ...job.mcp.allowedTools);
   argv.push('--disallowedTools', ...BLOCKED_TOOLS);
   return argv;
 }

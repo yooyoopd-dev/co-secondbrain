@@ -14,4 +14,6 @@ contextBridge.exposeInMainWorld('sb', {
   discardReview: () => ipcRenderer.invoke(IPC.discardReview),
   spendStatus: () => ipcRenderer.invoke(IPC.spendStatus),
   plan: () => ipcRenderer.invoke(IPC.plan),
+  ask: (q: string) => ipcRenderer.invoke(IPC.ask, q),
+  archiveAnswer: (q: string, a: unknown) => ipcRenderer.invoke(IPC.archiveAnswer, q, a),
 });

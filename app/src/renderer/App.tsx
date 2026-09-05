@@ -6,6 +6,7 @@ import type { SbApi, IngestResult, SourceSummary } from '../main/ipc.ts';
 import type { VaultConfig } from '../core/vault.ts';
 import type { Review } from '../core/review.ts';
 import type { Status } from '../core/spend.ts';
+import type { Answer } from '../core/query.ts';
 import { summarize } from '../core/spend.ts';
 import ReviewOverlay from './Review.tsx';
 
@@ -30,6 +31,8 @@ export default function App() {
   const [reviewNote, setReviewNote] = useState<string | null>(null);
   const [spend, setSpend] = useState<Status[]>([]);
   const [pending, setPending] = useState<number | null>(null);
+  // 답변도 디스크에 바로 안 쓴다. 보관을 눌러야 검토 화면으로 간다.
+  const [answer, setAnswer] = useState<{ question: string; answer: Answer } | null>(null);
 
   useEffect(() => {
     void window.sb.currentVault().then(setVault);
@@ -126,6 +129,35 @@ export default function App() {
     setReviewNote(null);
   };
 
+  const ask = async (question: string) => {
+    setBusy(true);
+    setReviewNote(null);
+    setAnswer(null);
+    try {
+      const r = await window.sb.ask(question);
+      if (r.ok) {
+        setAnswer({ question: r.question, answer: r.answer });
+        setReviewNote(`이번 질의에 $${r.costUsd.toFixed(4)} 들었습니다`);
+      } else {
+        setReviewNote(r.error);
+      }
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const archive = async () => {
+    if (!answer) return;
+    setBusy(true);
+    try {
+      setReview(await window.sb.archiveAnswer(answer.question, answer.answer));
+      setAnswer(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const jump = async (sourceId: string, locator: string | null) => {
     const ext = await window.sb.readSource(sourceId);
     if (ext) setViewer({ ext, locator });
@@ -145,7 +177,17 @@ export default function App() {
         spend={spend}
         pending={pending}
       />
-      <Results query={query} setQuery={setQuery} hits={hits} onJump={jump} sourceCount={sources.length} />
+      <Results
+        query={query}
+        setQuery={setQuery}
+        hits={hits}
+        onJump={jump}
+        sourceCount={sources.length}
+        busy={busy}
+        answer={answer}
+        onAsk={ask}
+        onArchive={archive}
+      />
       <Viewer viewer={viewer} busy={busy} note={reviewNote} onPropose={propose} />
       {report && <ReportToast report={report} onClose={() => setReport(null)} />}
       {review && (
@@ -271,12 +313,20 @@ function Results({
   hits,
   onJump,
   sourceCount,
+  busy,
+  answer,
+  onAsk,
+  onArchive,
 }: {
   query: string;
   setQuery: (q: string) => void;
   hits: SearchHit[];
   onJump: (sourceId: string, locator: string) => void;
   sourceCount: number;
+  busy: boolean;
+  answer: { question: string; answer: Answer } | null;
+  onAsk: (q: string) => void;
+  onArchive: () => void;
 }) {
   const len = [...query.trim()].length;
   const tooShort = len === 1;
@@ -301,7 +351,17 @@ function Results({
           aria-label="검색"
         />
         {tooShort && <div style={S.hintWarn}>2자 이상 입력해 주세요. 1자 질의는 결과가 너무 많습니다.</div>}
+        <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
+          <button disabled={busy || len < 2} onClick={() => onAsk(query.trim())}>
+            위키에 묻기
+          </button>
+          <span style={{ fontSize: '0.75rem', color: 'var(--fg-faint)' }}>
+            검색은 원본을, 질의는 위키를 봅니다
+          </span>
+        </div>
       </div>
+
+      {answer && <AnswerCard entry={answer} busy={busy} onJump={onJump} onArchive={onArchive} />}
 
       <div style={S.resultBody}>
         {len >= 2 && hits.length === 0 && <div style={S.empty}>결과가 없습니다.</div>}
@@ -325,6 +385,47 @@ function Results({
         ))}
       </div>
     </main>
+  );
+}
+
+/* ---------- 질의 답변 ---------- */
+
+function AnswerCard({
+  entry,
+  busy,
+  onJump,
+  onArchive,
+}: {
+  entry: { question: string; answer: Answer };
+  busy: boolean;
+  onJump: (sourceId: string, locator: string) => void;
+  onArchive: () => void;
+}) {
+  const { answer } = entry;
+  return (
+    <section style={S.answer} className="enter">
+      <div style={S.answerQ}>{entry.question}</div>
+      <div style={{ marginTop: 6 }}>{answer.answer}</div>
+
+      <ul style={S.claims}>
+        {answer.claims.map((c, i) => {
+          const [sourceId, ...rest] = c.source.split('#');
+          const locator = rest.join('#');
+          return (
+            <li key={i} style={S.claim}>
+              <button style={S.chip} title="원문으로 이동" onClick={() => onJump(sourceId!, locator)}>
+                {c.source}
+              </button>
+              <span style={{ color: 'var(--fg-muted)' }}>{c.text}</span>
+            </li>
+          );
+        })}
+      </ul>
+
+      <button className="primary" style={{ marginTop: 10 }} disabled={busy} onClick={onArchive}>
+        위키에 보관
+      </button>
+    </section>
   );
 }
 
@@ -455,6 +556,17 @@ const S = {
   searchBar: { padding: 'var(--s)', borderBottom: '1px solid var(--border)' },
   hintWarn: { color: 'var(--warn)', fontSize: '0.8125rem', marginTop: 6 },
   resultBody: { overflowY: 'auto', flex: 1, padding: 'var(--s)' },
+  answer: {
+    margin: 'var(--s)', padding: 'var(--s)', background: 'var(--bg-raised)',
+    border: '1px solid var(--border)', borderRadius: 'var(--r-card)',
+  },
+  answerQ: { fontWeight: 600, fontSize: '0.875rem', color: 'var(--fg-muted)' },
+  claims: { listStyle: 'none', margin: '10px 0 0', padding: 0, fontSize: '0.875rem' },
+  claim: { display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 4 },
+  chip: {
+    fontFamily: 'var(--mono)', fontSize: '0.75rem', color: 'var(--info)',
+    border: '1px solid var(--border)', padding: '1px 6px', background: 'transparent', whiteSpace: 'nowrap',
+  },
   hitGroup: { marginBottom: 16 },
   hitGroupHead: { fontFamily: 'var(--mono)', fontSize: '0.75rem', color: 'var(--fg-muted)', marginBottom: 4 },
   hitRow: {

@@ -43,6 +43,12 @@ export interface AgentJob {
    * (M0 §7.1.1 — $0.130 → $0.049). 배치의 두 번째 문서부터 넘긴다.
    */
   resumeSessionId?: string | null;
+  /**
+   * 읽기 경로에서만 쓴다 (PLAN.md §7.2 안 B). 에이전트가 위키를 당겨 갈 수 있게
+   * 내장 MCP 서버를 붙인다. 쓰기 경로에는 붙이지 않는다 — 도구로 디스크에 닿으면
+   * "사람 승인 전에는 안 쓴다" 는 원칙을 지킬 수 없다.
+   */
+  mcp?: { configPath: string; allowedTools: readonly string[] };
 }
 
 export interface AgentResult {

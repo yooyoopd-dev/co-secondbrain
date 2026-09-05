@@ -8,7 +8,7 @@ import { extractFile, buildThreads } from '../core/extract/index.ts';
 import { extractEmail, type MailMeta } from '../core/extract/email.ts';
 import { safeJoin } from '../core/security.ts';
 import { applyChangeSet, currentHash, type ApplyResult, type ChangeSet } from '../core/changeset.ts';
-import { buildReview, selectOps } from '../core/review.ts';
+import { buildReview, selectOps, type Review } from '../core/review.ts';
 import { snapshot } from '../core/history.ts';
 import { readWikiPages, writeIndex } from '../core/wiki.ts';
 import { createCli } from '../core/agent/index.ts';
@@ -19,9 +19,11 @@ import { read as readSpend, write as writeSpend } from '../core/spend-file.ts';
 import type { ProviderId } from '../core/agent/types.ts';
 import { CHANGESET_SCHEMA } from '../core/agent/schema.ts';
 import { conventionFile, promptFor, type WikiRef } from '../core/agent/ingest.ts';
+import { ALLOWED_TOOLS, mcpConfig, type McpLaunch } from '../core/mcp/config.ts';
+import { ANSWER_SCHEMA, parseAnswer, questionPrompt, toChangeSet, type Answer } from '../core/query.ts';
 import { disposeWorkdir, prepareWorkdir } from '../core/agent/workdir.ts';
 import type { Extraction, Relation } from '../core/types.ts';
-import type { IngestResult, ProposeResult, SourceSummary } from './ipc.ts';
+import type { AskResult, IngestResult, ProposeResult, SourceSummary } from './ipc.ts';
 
 export class Store {
   #vault: Vault | null = null;
@@ -38,8 +40,12 @@ export class Store {
   /** detect() 는 프로세스를 띄운다. 한 번만 한다 */
   #available: ProviderId[] | null = null;
 
-  constructor(opts: { spendFile?: string } = {}) {
+  /** MCP 서버를 어떻게 띄울지. 개발과 패키징본이 달라 main 이 정한다 */
+  readonly #mcpLaunch: ((vaultRoot: string) => McpLaunch) | null;
+
+  constructor(opts: { spendFile?: string; mcpLaunch?: (vaultRoot: string) => McpLaunch } = {}) {
     this.#spendFile = opts.spendFile ?? null;
+    this.#mcpLaunch = opts.mcpLaunch ?? null;
   }
 
   get vault(): Vault | null {
@@ -237,6 +243,54 @@ export class Store {
 
   discardReview(): void {
     this.#pending = null;
+  }
+
+  /* ---------- 질의 (PLAN.md §4 Query) ---------- */
+
+  /**
+   * 위키에 묻는다. 후보 페이지를 밀어 넣지 않고 **에이전트가 MCP 로 당겨 간다**
+   * (PLAN.md §7.2 안 B). 디스크는 안 건드린다 — 보관은 따로 승인받는다.
+   */
+  async ask(question: string, provider?: ProviderId): Promise<AskResult> {
+    const v = this.#require();
+    if (!this.#mcpLaunch) return { ok: false, error: '읽기 경로가 설정되지 않았습니다' };
+
+    const now = new Date().toISOString();
+    const overLimit = this.spendStatus(now).filter((s) => s.level === 'over').map((s) => s.provider);
+    const picked = provider
+      ? { ok: true as const, provider, fallback: false, why: '호출자 지정' }
+      : route('query', { available: await this.available(), overLimit });
+    if (!picked.ok) return { ok: false, error: picked.reason };
+
+    const cli = createCli(picked.provider);
+    const wd = await prepareWorkdir({ 'mcp.json': JSON.stringify(mcpConfig(this.#mcpLaunch(v.root)), null, 1) });
+    try {
+      const r = await cli.run(
+        {
+          workdir: wd.root,
+          prompt: questionPrompt(question),
+          mcp: { configPath: safeJoin(wd.root, 'mcp.json'), allowedTools: ALLOWED_TOOLS },
+        },
+        ANSWER_SCHEMA,
+      );
+      this.#spend = addSpend(this.#spend, picked.provider, r.usage, now);
+      if (this.#spendFile) await writeSpend(this.#spendFile, this.#spend);
+      if (!r.ok) return { ok: false, error: r.error ?? '답변을 받지 못했습니다' };
+
+      const { answer, reason } = parseAnswer(r.data);
+      if (!answer) return { ok: false, error: reason ?? '답변 형식이 맞지 않습니다' };
+      await appendLog(v, 'query', question);
+      return { ok: true, question, answer, costUsd: r.usage.costUsd };
+    } finally {
+      await disposeWorkdir(wd);
+    }
+  }
+
+  /** 보관 버튼. 답변을 ChangeSet 으로 바꿔 검토 대기에 올린다. 아직 안 쓴다. */
+  async archiveAnswer(question: string, answer: Answer): Promise<Review> {
+    const v = this.#require();
+    this.#pending = toChangeSet(question, answer, new Date().toISOString());
+    return buildReview(v, this.#pending, await this.#anchors());
   }
 
   /* ---------- 내부 ---------- */

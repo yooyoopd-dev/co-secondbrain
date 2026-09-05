@@ -38,6 +38,22 @@ export function safePagePath(vaultRoot: string, relDir: string, title: string): 
   return safeJoin(vaultRoot, relDir, `${slugify(title)}.md`);
 }
 
+/**
+ * 위키 페이지 파일명. `slugify` 만으로는 부족하다 — 가운뎃점 같은 문자가 살아남아
+ * `changeset.ts` 의 관문 2 정규식(`[a-z0-9가-힣-]`)에서 막힌다. 실제로 질문에 `·` 가
+ * 들어간 답변을 보관할 수 없었다.
+ *
+ * `slugify` 를 다시 걸어도 결과가 같다. 그래야 관문 3(파일명 안전성)을 통과한다.
+ */
+export function pageSlug(title: string): string {
+  const s = slugify(title)
+    .toLowerCase()
+    .replace(/[^a-z0-9가-힣-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return s || 'untitled';
+}
+
 /** 원본 id — 파일명에서 만든다. 앵커 인용의 왼쪽 절반이 된다. */
 export function sourceIdFrom(filename: string): string {
   const base = filename.replace(/\.[^.]+$/, '');
