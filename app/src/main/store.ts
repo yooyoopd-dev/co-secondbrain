@@ -7,13 +7,23 @@ import { openVault, createVault, importSource, appendLog, type Vault } from '../
 import { extractFile, buildThreads } from '../core/extract/index.ts';
 import { extractEmail, type MailMeta } from '../core/extract/email.ts';
 import { safeJoin } from '../core/security.ts';
+import { applyChangeSet, currentHash, type ApplyResult, type ChangeSet } from '../core/changeset.ts';
+import { buildReview, selectOps } from '../core/review.ts';
+import { snapshot } from '../core/history.ts';
+import { readWikiPages, writeIndex } from '../core/wiki.ts';
+import { createClaudeCode } from '../core/agent/claude-code.ts';
+import { CHANGESET_SCHEMA } from '../core/agent/schema.ts';
+import { conventionFile, promptFor, type WikiRef } from '../core/agent/ingest.ts';
+import { disposeWorkdir, prepareWorkdir } from '../core/agent/workdir.ts';
 import type { Extraction, Relation } from '../core/types.ts';
-import type { IngestResult, SourceSummary } from './ipc.ts';
+import type { IngestResult, ProposeResult, SourceSummary } from './ipc.ts';
 
 export class Store {
   #vault: Vault | null = null;
   #db: DatabaseSync | null = null;
   #index: SearchIndex | null = null;
+  /** 검토 중인 변경안. 사람이 승인하기 전까지 여기 머문다 — 디스크에 없다 */
+  #pending: ChangeSet | null = null;
 
   get vault(): Vault | null {
     return this.#vault;
@@ -35,6 +45,7 @@ export class Store {
     this.#db = null;
     this.#index = null;
     this.#vault = null;
+    this.#pending = null;
   }
 
   /** 파일 여러 개를 인제스트한다. 한 건이 실패해도 나머지는 계속한다. */
@@ -98,7 +109,75 @@ export class Store {
     }
   }
 
+  /* ---------- 관문 8 — 변경안 제안과 승인 ---------- */
+
+  /**
+   * 원본 하나로 ChangeSet 을 받아 검토 재료를 만든다. **디스크는 건드리지 않는다.**
+   * 실패해도 던지지 않는다 — 사유를 화면에 그대로 띄우는 편이 낫다.
+   */
+  async propose(sourceId: string): Promise<ProposeResult> {
+    const v = this.#require();
+    const ext = await this.readSource(sourceId);
+    if (!ext) return { ok: false, error: `원본이 없습니다: ${sourceId}` };
+
+    // 규약 파일은 배치 내내 같은 바이트여야 캐시가 산다 (M2-PLAN.md §2.1)
+    const agentsMd = await fs.readFile(safeJoin(v.root, 'schema/AGENTS.md'), 'utf8');
+    const wd = await prepareWorkdir({ 'CLAUDE.md': conventionFile(agentsMd) });
+    try {
+      const r = await createClaudeCode().run(
+        { workdir: wd.root, prompt: promptFor(ext, await this.#wikiRefs()) },
+        CHANGESET_SCHEMA,
+      );
+      if (!r.ok) return { ok: false, error: r.error ?? '변경안을 받지 못했습니다' };
+      this.#pending = r.data as ChangeSet;
+      return { ok: true, review: await buildReview(v, this.#pending, await this.#anchors()), costUsd: r.usage.costUsd };
+    } finally {
+      await disposeWorkdir(wd);
+    }
+  }
+
+  /** 사람이 승인한 경로만 적용한다. 스냅샷을 먼저 남기고 index.md 를 다시 조립한다. */
+  async applyReview(approved: readonly string[]): Promise<ApplyResult> {
+    const v = this.#require();
+    if (!this.#pending) throw new Error('검토 중인 변경안이 없습니다');
+    const cs = selectOps(this.#pending, approved);
+    const res = await applyChangeSet(v, cs, await this.#anchors(), async (paths) => {
+      await snapshot(v, paths, cs.summary);
+    });
+    if (res.applied.length > 0) {
+      this.#pending = null;
+      await writeIndex(v, (await readWikiPages(v)).entries);
+      await appendLog(v, 'ingest', `변경안 적용 ${res.applied.length}건 — ${cs.summary}`);
+    }
+    return res;
+  }
+
+  discardReview(): void {
+    this.#pending = null;
+  }
+
   /* ---------- 내부 ---------- */
+
+  /** 앵커 실재 검사(관문 5)의 근거. extracted/ 가 진실이다. */
+  async #anchors(): Promise<Map<string, Set<string>>> {
+    const m = new Map<string, Set<string>>();
+    for (const s of await this.listSources()) {
+      const e = await this.readSource(s.sourceId);
+      if (e) m.set(e.sourceId, new Set(e.chunks.map((c) => c.anchor.locator)));
+    }
+    return m;
+  }
+
+  /** 모델이 update 를 내려면 지금 페이지의 baseHash 를 알아야 한다. */
+  async #wikiRefs(): Promise<WikiRef[]> {
+    const v = this.#require();
+    const out: WikiRef[] = [];
+    for (const e of (await readWikiPages(v)).entries) {
+      const hash = await currentHash(v, e.path);
+      if (hash) out.push({ path: e.path, title: e.page.front.title, hash });
+    }
+    return out;
+  }
 
   #require(): Vault {
     if (!this.#vault || !this.#index) throw new Error('Vault 가 열려 있지 않습니다');

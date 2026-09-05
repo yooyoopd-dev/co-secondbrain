@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Extraction, SearchHit } from '../core/types.ts';
 import type { SbApi, IngestResult, SourceSummary } from '../main/ipc.ts';
 import type { VaultConfig } from '../core/vault.ts';
+import type { Review } from '../core/review.ts';
+import ReviewOverlay from './Review.tsx';
 
 declare global {
   interface Window {
@@ -21,6 +23,9 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [viewer, setViewer] = useState<{ ext: Extraction; locator: string | null } | null>(null);
   const [report, setReport] = useState<IngestResult | null>(null);
+  // 변경안은 승인 전까지 여기(그리고 main 의 메모리)에만 있다. 디스크에는 없다.
+  const [review, setReview] = useState<Review | null>(null);
+  const [reviewNote, setReviewNote] = useState<string | null>(null);
 
   useEffect(() => {
     void window.sb.currentVault().then(setVault);
@@ -76,6 +81,44 @@ export default function App() {
     }
   };
 
+  const propose = async (sourceId: string) => {
+    setBusy(true);
+    setReviewNote(null);
+    try {
+      const r = await window.sb.propose(sourceId);
+      if (r.ok) {
+        setReview(r.review);
+        setReviewNote(`이번 제안에 $${r.costUsd.toFixed(4)} 들었습니다`);
+      } else {
+        setReviewNote(r.error);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const applyReview = async (approved: string[]) => {
+    setBusy(true);
+    try {
+      const res = await window.sb.applyReview(approved);
+      if (res.applied.length > 0) {
+        setReview(null);
+        setReviewNote(`${res.applied.length}건 적용했습니다`);
+      } else {
+        // 관문 7 은 적용 직전에 다시 본다. 검토 중에 파일이 바뀌었을 수 있다.
+        setReviewNote(res.conflicts.length ? '검토하는 동안 페이지가 바뀌었습니다. 다시 제안해 주십시오' : '적용하지 못했습니다');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const discardReview = async () => {
+    await window.sb.discardReview();
+    setReview(null);
+    setReviewNote(null);
+  };
+
   const jump = async (sourceId: string, locator: string | null) => {
     const ext = await window.sb.readSource(sourceId);
     if (ext) setViewer({ ext, locator });
@@ -94,8 +137,17 @@ export default function App() {
         onSelect={(id) => jump(id, null)}
       />
       <Results query={query} setQuery={setQuery} hits={hits} onJump={jump} sourceCount={sources.length} />
-      <Viewer viewer={viewer} />
+      <Viewer viewer={viewer} busy={busy} note={reviewNote} onPropose={propose} />
       {report && <ReportToast report={report} onClose={() => setReport(null)} />}
+      {review && (
+        <ReviewOverlay
+          review={review}
+          busy={busy}
+          onApply={applyReview}
+          onCancel={discardReview}
+          onJump={(sourceId, locator) => void jump(sourceId, locator)}
+        />
+      )}
     </div>
   );
 }
@@ -254,7 +306,17 @@ function Results({
 
 /* ---------- 우: 원문 뷰어 ---------- */
 
-function Viewer({ viewer }: { viewer: { ext: Extraction; locator: string | null } | null }) {
+function Viewer({
+  viewer,
+  busy,
+  note,
+  onPropose,
+}: {
+  viewer: { ext: Extraction; locator: string | null } | null;
+  busy: boolean;
+  note: string | null;
+  onPropose: (sourceId: string) => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -281,6 +343,13 @@ function Viewer({ viewer }: { viewer: { ext: Extraction; locator: string | null 
         <div style={S.viewerMeta}>
           {ext.kind} · {ext.chunks.length}개 조각 · 관계 {ext.relations.length}개
         </div>
+        <div style={{ display: 'flex', gap: 'var(--s)', alignItems: 'center', marginTop: 8 }}>
+          <button disabled={busy} onClick={() => onPropose(ext.sourceId)}>
+            이 원본으로 위키 갱신
+          </button>
+          {busy && <span className="skeleton" style={{ flex: 1, height: 14 }} />}
+        </div>
+        {note && <div style={S.viewerNote}>{note}</div>}
         {ext.warnings.map((w, i) => (
           <div key={i} style={S.warnBox}>
             {w}
@@ -376,6 +445,7 @@ const S = {
   viewer: { borderLeft: '1px solid var(--border)', overflowY: 'auto', background: 'var(--bg-surface)' },
   viewerHead: { padding: 'var(--s)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--bg-surface)' },
   viewerMeta: { fontSize: '0.8125rem', color: 'var(--fg-muted)' },
+  viewerNote: { marginTop: 8, fontSize: '0.8125rem', color: 'var(--fg-muted)' },
   warnBox: {
     marginTop: 6, padding: 6, borderRadius: 'var(--r-input)',
     border: '1px solid var(--warn)', color: 'var(--warn)', fontSize: '0.8125rem',

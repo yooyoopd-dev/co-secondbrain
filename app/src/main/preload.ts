@@ -9,4 +9,7 @@ contextBridge.exposeInMainWorld('sb', {
   listSources: () => ipcRenderer.invoke(IPC.listSources),
   search: (q: string) => ipcRenderer.invoke(IPC.search, q),
   readSource: (id: string) => ipcRenderer.invoke(IPC.readSource, id),
+  propose: (id: string) => ipcRenderer.invoke(IPC.propose, id),
+  applyReview: (approved: string[]) => ipcRenderer.invoke(IPC.applyReview, approved),
+  discardReview: () => ipcRenderer.invoke(IPC.discardReview),
 });
