@@ -8,13 +8,31 @@
 // 네임스페이스로 잡힌다. 런타임에서 확인한 실제 모양에 맞춰 이름 임포트와 캐스트를 쓴다.
 import { UndirectedGraph } from 'graphology';
 import louvainFn from 'graphology-communities-louvain';
+import type { Page } from './page.ts';
+import { outboundLinks } from './page.ts';
 
 const louvain = louvainFn as unknown as (
   graph: UndirectedGraph,
-  options?: { resolution?: number },
+  options?: { resolution?: number; rng?: () => number },
 ) => Record<string, number>;
-import type { Page } from './page.ts';
-import { outboundLinks } from './page.ts';
+
+/**
+ * Louvain 은 기본값이 `Math.random` 이라 같은 그래프에서도 실행마다 다른 결과를 낸다.
+ * 실제로 테스트가 한 번 흔들려서 발견했다. 이건 시험 편의가 아니라 제품 요건이다 —
+ * 위키가 그대로인데 "의외의 연결"과 god node 순위가 Lint 를 돌릴 때마다 바뀌면
+ * 사람이 결과를 믿지 않는다.
+ *
+ * mulberry32. 씨앗을 고정한다.
+ */
+function seededRng(seed = 0x9e3779b9): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 export interface GraphNode {
   id: string;
@@ -99,7 +117,7 @@ export function analyze(pages: readonly Page[]): Analysis {
 
   const communities = new Map<number, string[]>();
   if (g.order > 0) {
-    const assign = louvain(g, { resolution: 1 });
+    const assign = louvain(g, { resolution: 1, rng: seededRng() });
     for (const [node, c] of Object.entries(assign)) {
       const list = communities.get(c) ?? [];
       list.push(node);

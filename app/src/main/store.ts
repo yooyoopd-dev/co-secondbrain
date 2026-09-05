@@ -11,7 +11,8 @@ import { applyChangeSet, currentHash, type ApplyResult, type ChangeSet } from '.
 import { buildReview, selectOps } from '../core/review.ts';
 import { snapshot } from '../core/history.ts';
 import { readWikiPages, writeIndex } from '../core/wiki.ts';
-import { createClaudeCode } from '../core/agent/claude-code.ts';
+import { createCli } from '../core/agent/index.ts';
+import type { ProviderId } from '../core/agent/types.ts';
 import { CHANGESET_SCHEMA } from '../core/agent/schema.ts';
 import { conventionFile, promptFor, type WikiRef } from '../core/agent/ingest.ts';
 import { disposeWorkdir, prepareWorkdir } from '../core/agent/workdir.ts';
@@ -115,16 +116,18 @@ export class Store {
    * 원본 하나로 ChangeSet 을 받아 검토 재료를 만든다. **디스크는 건드리지 않는다.**
    * 실패해도 던지지 않는다 — 사유를 화면에 그대로 띄우는 편이 낫다.
    */
-  async propose(sourceId: string): Promise<ProposeResult> {
+  async propose(sourceId: string, provider: ProviderId = 'claude-code'): Promise<ProposeResult> {
     const v = this.#require();
     const ext = await this.readSource(sourceId);
     if (!ext) return { ok: false, error: `원본이 없습니다: ${sourceId}` };
 
-    // 규약 파일은 배치 내내 같은 바이트여야 캐시가 산다 (M2-PLAN.md §2.1)
+    const cli = createCli(provider);
+    // 규약 파일은 배치 내내 같은 바이트여야 캐시가 산다 (M2-PLAN.md §2.1).
+    // 이름은 CLI 마다 다르다 (PLAN.md §7.3).
     const agentsMd = await fs.readFile(safeJoin(v.root, 'schema/AGENTS.md'), 'utf8');
-    const wd = await prepareWorkdir({ 'CLAUDE.md': conventionFile(agentsMd) });
+    const wd = await prepareWorkdir({ [cli.conventionFile]: conventionFile(agentsMd) });
     try {
-      const r = await createClaudeCode().run(
+      const r = await cli.run(
         { workdir: wd.root, prompt: promptFor(ext, await this.#wikiRefs()) },
         CHANGESET_SCHEMA,
       );

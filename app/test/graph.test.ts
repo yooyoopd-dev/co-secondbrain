@@ -115,3 +115,27 @@ test('빈 위키에서도 죽지 않는다', () => {
   assert.deepEqual(r.surprising, []);
   assert.deepEqual(r.orphans, []);
 });
+
+test('같은 위키는 같은 결과를 낸다 — Louvain 기본 난수를 고정했다', () => {
+  // 고정하기 전에 전체 스위트에서 한 번 흔들렸다. 위키가 그대로인데 순위가 바뀌면
+  // 사람이 Lint 결과를 믿지 않는다.
+  const ring = (prefix: string) =>
+    Array.from({ length: 8 }, (_, i) =>
+      page(`${prefix}${i}`, `${prefix}${i}`, link(`${prefix}${(i + 1) % 8}`, `${prefix}${(i + 7) % 8}`, 'hub')),
+    );
+  const build = () => {
+    const pages = [...ring('a'), ...ring('b'), page('hub', '허브', '')];
+    pages[0]!.body += link('b0');
+    return pages;
+  };
+  const key = () => {
+    const r = analyze(build());
+    return JSON.stringify({
+      c: [...r.communities.entries()].sort(),
+      g: r.godNodes.map((x) => x.id),
+      s: r.surprising.map((x) => `${x.a}-${x.b}`),
+    });
+  };
+  const first = key();
+  for (let i = 0; i < 30; i++) assert.equal(key(), first, `${i + 1}회차에서 결과가 달라졌습니다`);
+});

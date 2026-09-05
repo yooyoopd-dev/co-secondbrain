@@ -65,6 +65,8 @@ export interface AgentCli {
   id: ProviderId;
   /** CLI 가 스키마를 강제하는가. Claude Code·Codex true, Gemini false (PLAN.md §7.1) */
   supportsSchema: boolean;
+  /** 작업 디렉터리에 놓을 규약 파일 이름. CLI 마다 찾는 이름이 다르다 (PLAN.md §7.3) */
+  conventionFile: 'CLAUDE.md' | 'AGENTS.md' | 'GEMINI.md';
   detect(): Promise<{ found: boolean; version?: string }>;
   run(job: AgentJob, schema: object): Promise<AgentResult>;
 }
@@ -73,5 +75,6 @@ export interface AgentCli {
 export type Exec = (
   bin: string,
   argv: readonly string[],
-  opts: { cwd: string; env: NodeJS.ProcessEnv },
+  /** `stdin` 으로 프롬프트를 넘긴다 — Windows argv 인용부호를 피한다 (agent/exec.ts) */
+  opts: { cwd: string; env: NodeJS.ProcessEnv; stdin?: string },
 ) => Promise<{ stdout: string; stderr: string; code: number }>;

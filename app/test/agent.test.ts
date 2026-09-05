@@ -338,3 +338,181 @@ test('결함 — 모델이 규약 표본의 generated_by 를 그대로 베낀다
   // Claude 로 돌릴 때는 값이 우연히 맞아 안 보였다. Gemini 가 냈는데도 claude-code 다.
   assert.match(JSON.parse(GEMINI_RAW).ops[0].content, /generated_by: claude-code/);
 });
+
+/* ================= 앱이 덮어쓰는 front-matter (ROADMAP 7번) ================= */
+
+import { stampProvider } from '../src/core/agent/stamp.ts';
+import { parsePage, serializePage } from '../src/core/page.ts';
+
+const PAGE = serializePage({
+  front: {
+    id: 'ent-a', type: 'entity', title: '에이', summary: '요약.', aliases: [], tags: [],
+    claims: [{ text: '주장.', source: 'src-kickoff#slide-3', confidence: 'EXTRACTED' }],
+    openQuestions: [], derivedFrom: null,
+    generatedBy: 'claude-code', // 모델이 규약 표본에서 베낀 값
+    updated: '2026-09-05T00:00:00.000Z', // 표본의 가짜 날짜
+    updatedBy: 'app',
+  },
+  body: '\n# 에이\n\n주장.[^src-kickoff#slide-3]\n',
+});
+const NOW = '2026-09-06T12:34:56.000Z';
+
+test('스탬프 — 모델이 뭘 썼든 실제 공급자가 기록된다', () => {
+  const out = stampProvider({ summary: 's', ops: [{ op: 'create', path: 'wiki/entities/a.md', baseHash: null, content: PAGE }] }, 'gemini', NOW);
+  assert.equal(parsePage(out.ops[0]!.content!).front.generatedBy, 'gemini');
+});
+
+test('스탬프 — updated 를 지금으로 바꾼다. 안 그러면 낡은 주장 검사가 못 돈다', () => {
+  const out = stampProvider({ summary: 's', ops: [{ op: 'create', path: 'wiki/entities/a.md', baseHash: null, content: PAGE }] }, 'claude-code', NOW);
+  assert.equal(parsePage(out.ops[0]!.content!).front.updated, NOW);
+  assert.notEqual(parsePage(PAGE).front.updated, NOW); // 원본은 가짜 날짜였다
+});
+
+test('스탬프 — updated_by 는 건드리지 않는다. 앱이 사용자를 모른다', () => {
+  const out = stampProvider({ summary: 's', ops: [{ op: 'create', path: 'wiki/entities/a.md', baseHash: null, content: PAGE }] }, 'gemini', NOW);
+  assert.equal(parsePage(out.ops[0]!.content!).front.updatedBy, 'app');
+});
+
+test('스탬프 — 그 외에는 바이트가 안 바뀐다', () => {
+  const out = stampProvider({ summary: 's', ops: [{ op: 'create', path: 'wiki/entities/a.md', baseHash: null, content: PAGE }] }, 'claude-code', NOW);
+  const before = parsePage(PAGE);
+  const after = parsePage(out.ops[0]!.content!);
+  assert.equal(after.body, before.body);
+  assert.deepEqual(after.front.claims, before.front.claims);
+  assert.equal(after.front.summary, before.front.summary);
+});
+
+test('스탬프 — delete 와 파싱 불가 content 는 그대로 둔다', () => {
+  const cs: ChangeSet = {
+    summary: 's', discussion: '물음',
+    ops: [
+      { op: 'delete', path: 'wiki/entities/a.md', baseHash: 'h' },
+      { op: 'create', path: 'wiki/entities/b.md', baseHash: null, content: '앞머리가 없다' },
+    ],
+  };
+  const out = stampProvider(cs, 'gemini', NOW);
+  assert.deepEqual(out.ops[0], cs.ops[0]);
+  assert.equal(out.ops[1]!.content, '앞머리가 없다'); // 관문 1 이 잡게 둔다
+  assert.equal(out.discussion, '물음');
+});
+
+test('스탬프 — 녹화된 Gemini 응답의 claude-code 표기가 고쳐진다 (회귀)', () => {
+  const cs = JSON.parse(GEMINI_RAW) as ChangeSet;
+  assert.match(cs.ops[0]!.content!, /generated_by: claude-code/);
+  const out = stampProvider(cs, 'gemini', NOW);
+  assert.match(out.ops[0]!.content!, /generated_by: gemini/);
+  assert.match(out.ops[0]!.content!, new RegExp(`updated: ${NOW}`));
+});
+
+/* ================= Gemini B등급 어댑터 (ROADMAP 3번) ================= */
+
+import { createGemini, extract, retryPrompt, withSchema, stripFence as gStripFence } from '../src/core/agent/gemini.ts';
+
+const OK_CS = JSON.stringify({ summary: 's', ops: [{ op: 'create', path: 'wiki/entities/a.md', baseHash: null, content: PAGE }] });
+
+test('B등급 — 펜스가 있어도 없어도 뽑는다', () => {
+  assert.equal(gStripFence(OK_CS), OK_CS);
+  assert.equal(gStripFence('```json\n' + OK_CS + '\n```'), OK_CS);
+  assert.equal(gStripFence('앞말\n```\n' + OK_CS + '\n```\n뒷말'), OK_CS);
+});
+
+test('B등급 — 녹화된 실응답 3건이 전부 extract 를 통과한다', async () => {
+  for (const id of ['kickoff', 'contract', 'cost']) {
+    const raw = await fs.readFile(new URL(`../../spikes/fixtures/cli/gemini-${id}.txt`, import.meta.url), 'utf8');
+    assert.equal(extract(raw).reason, null, id);
+  }
+});
+
+test('B등급 — 형식이 틀리면 사유를 준다. 그게 재요청 문구가 된다', () => {
+  assert.match(extract('그냥 말').reason ?? '', /JSON 이 아닙니다/);
+  assert.match(extract('{"summary":"","ops":[]}').reason ?? '', /비었/);
+  assert.match(extract('').reason ?? '', /비었/);
+  assert.match(extract(JSON.stringify({ summary: 's', ops: [{ op: 'create', path: '탈출/../x.md', baseHash: null, content: PAGE }] })).reason ?? '', /경로 형식/);
+});
+
+test('B등급 — 스키마는 프롬프트 뒤에 붙는다 (앞에 두면 캐시 접두사가 깨진다)', () => {
+  const p = withSchema('원본 내용', CHANGESET_SCHEMA);
+  assert.ok(p.startsWith('원본 내용'));
+  assert.ok(p.includes('JSON Schema'));
+  assert.ok(p.indexOf('원본 내용') < p.indexOf('JSON Schema'));
+});
+
+/** 호출마다 다른 응답을 주고 넘겨받은 stdin 을 기록한다. */
+function geminiExec(outs: string[]) {
+  const stdins: (string | undefined)[] = [];
+  let i = 0;
+  const exec: Exec = async (_b, _a, o) => {
+    stdins.push(o.stdin);
+    return { stdout: outs[Math.min(i++, outs.length - 1)] ?? '', stderr: '', code: 0 };
+  };
+  return { exec, stdins };
+}
+
+const gJob = { workdir: '/tmp/wd', prompt: '원본 내용' };
+
+test('B등급 — 한 번에 맞으면 한 번만 부른다', async () => {
+  const { exec, stdins } = geminiExec([OK_CS]);
+  const r = await createGemini(exec).run(gJob, CHANGESET_SCHEMA);
+  assert.equal(r.ok, true, r.error);
+  assert.equal(stdins.length, 1);
+  assert.ok(stdins[0]!.includes('원본 내용'));
+  assert.ok(stdins[0]!.includes('JSON Schema')); // 프롬프트는 stdin 으로 간다
+});
+
+test('B등급 — 틀리면 사유를 붙여 한 번 다시 묻는다', async () => {
+  const { exec, stdins } = geminiExec(['그냥 말', OK_CS]);
+  const r = await createGemini(exec).run(gJob, CHANGESET_SCHEMA);
+  assert.equal(r.ok, true, r.error);
+  assert.equal(stdins.length, 2);
+  assert.match(stdins[1]!, /앞선 응답이 거부됐다/);
+  assert.match(stdins[1]!, /JSON 이 아닙니다/);
+});
+
+test('B등급 — 재요청은 1회 고정이다. 조용히 더 돌지 않는다', async () => {
+  const { exec, stdins } = geminiExec(['그냥 말']);
+  const r = await createGemini(exec).run(gJob, CHANGESET_SCHEMA);
+  assert.equal(r.ok, false);
+  assert.equal(stdins.length, 2, '재요청이 1회를 넘었습니다');
+  assert.match(r.error ?? '', /두 번 다 틀렸습니다/);
+});
+
+test('B등급 — 결과가 gemini 로 스탬프된다', async () => {
+  const { exec } = geminiExec([OK_CS]);
+  const r = await createGemini(exec).run(gJob, CHANGESET_SCHEMA);
+  assert.match((r.data as ChangeSet).ops[0]!.content!, /generated_by: gemini/);
+});
+
+test('B등급 — 출력이 없으면 실패다. 재요청하지 않는다', async () => {
+  const { exec, stdins } = geminiExec(['']);
+  const r = await createGemini(exec).run(gJob, CHANGESET_SCHEMA);
+  assert.equal(r.ok, false);
+  assert.equal(stdins.length, 1);
+});
+
+test('B등급 — 비용을 보고하지 않는다. 지출 계량기가 Gemini 를 못 센다', async () => {
+  const { exec } = geminiExec([OK_CS]);
+  const r = await createGemini(exec).run(gJob, CHANGESET_SCHEMA);
+  assert.deepEqual(r.usage, ZERO_USAGE);
+  assert.equal(r.sessionId, null); // 세션 재개 경로가 없다
+});
+
+test('규약 파일 이름이 CLI 마다 다르다 (PLAN.md §7.3)', () => {
+  assert.equal(createGemini(exec('')).conventionFile, 'GEMINI.md');
+  assert.equal(createClaudeCode(exec('')).conventionFile, 'CLAUDE.md');
+  assert.equal(createGemini(exec('')).supportsSchema, false);
+});
+
+test('A등급 — 프롬프트가 argv 가 아니라 stdin 으로 간다 (Windows 인용부호)', async () => {
+  let seenArgv: readonly string[] = [];
+  let seenStdin: string | undefined;
+  const cli = createClaudeCode(async (_b, a, o) => {
+    seenArgv = a;
+    seenStdin = o.stdin;
+    return { stdout: FIXTURE, stderr: '', code: 0 };
+  });
+  await cli.run({ workdir: '/tmp/wd', prompt: '아주 긴 원본 내용' }, {});
+  assert.equal(seenStdin, '아주 긴 원본 내용');
+  assert.ok(!seenArgv.includes('아주 긴 원본 내용'), 'argv 에 프롬프트가 들어 있습니다');
+  assert.equal(seenArgv[0], '-p');
+  assert.equal(seenArgv[1], '--output-format');
+});

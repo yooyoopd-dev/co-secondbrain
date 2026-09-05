@@ -6,8 +6,10 @@
 // 비용 구조: 콜드 실행 1회의 바닥이 $0.11338 이고 그중 28,194 토큰이 CLI 자기 시스템
 // 프롬프트다 (M2-PLAN.md §2). 프롬프트를 줄이는 최적화는 이 앞에서 거의 효과가 없다.
 // 줄일 수 있는 건 **프로세스 수**뿐이라 배치는 `resumeSessionId` 로 이어 붙인다.
-import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { realExec } from './exec.ts';
+import { stampProvider } from './stamp.ts';
+import type { ChangeSet } from '../changeset.ts';
 import type { AgentCli, AgentJob, AgentResult, Exec, Usage } from './types.ts';
 import { ZERO_USAGE } from './types.ts';
 
@@ -21,8 +23,6 @@ export const BLOCKED_TOOLS = [
 
 /** 부모 Claude Code 세션의 정체를 물려받으면 `--resume` 이 부모 세션과 충돌한다. */
 const STRIPPED_ENV = ['CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_REMOTE_SESSION_ID', 'CLAUDE_CODE_CHILD_SESSION'];
-
-const TIMEOUT_MS = 5 * 60_000;
 
 /** CLI 응답에서 우리가 읽는 부분만. 나머지 키는 무시한다. */
 interface CliJson {
@@ -40,8 +40,9 @@ interface CliJson {
   };
 }
 
+/** 프롬프트는 argv 가 아니라 stdin 으로 간다. `-p` 를 인자 없이 둔다 (exec.ts). */
 export function buildArgv(job: AgentJob, schema: object, sessionId: string): string[] {
-  const argv = ['-p', job.prompt, '--output-format', 'json', '--json-schema', JSON.stringify(schema)];
+  const argv = ['-p', '--output-format', 'json', '--json-schema', JSON.stringify(schema)];
   argv.push(job.resumeSessionId ? '--resume' : '--session-id', job.resumeSessionId ?? sessionId);
   argv.push('--strict-mcp-config');
   argv.push('--disallowedTools', ...BLOCKED_TOOLS);
@@ -78,28 +79,11 @@ export function parseResult(stdout: string): AgentResult {
   return { ok: true, data: j.structured_output, sessionId, usage, raw: stdout };
 }
 
-const realExec: Exec = (bin, argv, opts) =>
-  new Promise((resolve, reject) => {
-    const p = spawn(bin, argv as string[], { cwd: opts.cwd, env: opts.env, stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-    const timer = setTimeout(() => p.kill('SIGKILL'), TIMEOUT_MS);
-    p.stdout.on('data', (c: Buffer) => (stdout += c));
-    p.stderr.on('data', (c: Buffer) => (stderr += c));
-    p.on('error', (e) => {
-      clearTimeout(timer);
-      reject(e);
-    });
-    p.on('close', (code) => {
-      clearTimeout(timer);
-      resolve({ stdout, stderr, code: code ?? -1 });
-    });
-  });
-
 export function createClaudeCode(exec: Exec = realExec): AgentCli {
   return {
     id: 'claude-code',
     supportsSchema: true,
+    conventionFile: 'CLAUDE.md',
 
     async detect() {
       try {
@@ -117,7 +101,7 @@ export function createClaudeCode(exec: Exec = realExec): AgentCli {
       for (const k of STRIPPED_ENV) delete env[k];
       const argv = buildArgv(job, schema, randomUUID());
       try {
-        const { stdout, stderr, code } = await exec(BIN, argv, { cwd: job.workdir, env });
+        const { stdout, stderr, code } = await exec(BIN, argv, { cwd: job.workdir, env, stdin: job.prompt });
         if (!stdout.trim()) {
           return {
             ok: false, data: null, sessionId: null, usage: ZERO_USAGE,
@@ -125,7 +109,9 @@ export function createClaudeCode(exec: Exec = realExec): AgentCli {
             raw: stdout,
           };
         }
-        return parseResult(stdout);
+        const r = parseResult(stdout);
+        // 모델이 규약 표본의 generated_by·updated 를 베낀다. 승인 화면에 가기 전에 고친다.
+        return r.ok ? { ...r, data: stampProvider(r.data as ChangeSet, 'claude-code') } : r;
       } catch (e) {
         return {
           ok: false, data: null, sessionId: null, usage: ZERO_USAGE,
