@@ -316,3 +316,25 @@ test('녹화된 배치에서 첫 건만 콜드고 나머지는 cache 읽기가 �
   // 2번째부터는 첫 건보다 싸다 — 세션 재개가 실제로 먹혔다는 증거
   for (const u of us.slice(1)) assert.ok(u.costUsd < us[0]!.costUsd);
 });
+
+/* ================= Gemini B등급 (W3) ================= */
+
+/** 2026-09-05 개인 계정 Gemini 0.58.0 응답을 그대로 저장한 것. 스키마 강제 없음 */
+const GEMINI_RAW = await fs.readFile(new URL('./fixtures/gemini-ok.txt', import.meta.url), 'utf8');
+
+test('W3 — Gemini 는 스키마 없이도 펜스 없는 순수 JSON 을 냈다', () => {
+  assert.equal(GEMINI_RAW.includes('```'), false, '펜스드 블록이 있습니다');
+  assert.equal(GEMINI_RAW.trim().startsWith('{'), true);
+  assert.equal(GEMINI_RAW.trim().endsWith('}'), true);
+});
+
+test('W3 — Gemini 응답이 관문을 통과한다 (B등급 경로의 전제)', () => {
+  const cs = JSON.parse(GEMINI_RAW) as ChangeSet;
+  const known = new Map<string, ReadonlySet<string>>([['src-kickoff', new Set(['slide-3', 'slide-12'])]]);
+  assert.deepEqual([...validateShape(cs), ...validateAnchors(cs, known)], []);
+});
+
+test('결함 — 모델이 규약 표본의 generated_by 를 그대로 베낀다. 앱이 덮어써야 한다', () => {
+  // Claude 로 돌릴 때는 값이 우연히 맞아 안 보였다. Gemini 가 냈는데도 claude-code 다.
+  assert.match(JSON.parse(GEMINI_RAW).ops[0].content, /generated_by: claude-code/);
+});
