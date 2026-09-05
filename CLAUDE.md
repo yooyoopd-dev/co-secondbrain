@@ -138,6 +138,7 @@
 | [`docs/PLAN.md`](docs/PLAN.md) | 전체 계획. 여기서 시작 |
 | [`docs/M0-RESULTS.md`](docs/M0-RESULTS.md) | 실측 결과. 설계 근거의 대부분 |
 | [`docs/M1-NOTES.md`](docs/M1-NOTES.md) | M1 구현에서 코드를 고치게 만든 측정 |
+| [`docs/M2-PLAN.md`](docs/M2-PLAN.md) | M2 구현 방법 재검토 — 계정 분리와 월 $50 예산 |
 | [`docs/HUB.md`](docs/HUB.md) | 사내 동기화 서버 |
 | [`docs/REVIEW-graphify.md`](docs/REVIEW-graphify.md) · [`docs/REVIEW-imnotai.md`](docs/REVIEW-imnotai.md) | 선행 사례 검토 |
 | [`spikes/`](spikes/) | 검증 코드 (실행 가능) |
