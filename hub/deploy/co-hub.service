@@ -1,0 +1,28 @@
+# /etc/systemd/system/co-hub.service
+# 사내 Ubuntu 리눅스 PC 에서 돈다 (HUB.md §2).
+#
+#   sudo cp hub/deploy/co-hub.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now co-hub
+
+[Unit]
+Description=CO-Hub 사내 동기화 서버
+After=network.target
+
+[Service]
+Type=simple
+User=co-hub
+Group=co-hub
+WorkingDirectory=/srv/co-hub
+ExecStart=/usr/bin/node /srv/co-hub/dist/main.js /srv/co-hub/config.json
+Restart=always
+RestartSec=3
+
+# 인터넷에 나가지 않는다. 사내망 안에서만 받는다.
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=yes
+ReadWritePaths=/srv/co-hub
+
+[Install]
+WantedBy=multi-user.target

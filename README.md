@@ -93,10 +93,11 @@ IP 주소)가 팀원 사이를 중계합니다. CO-Hub는 SQLite와 블롭 저�
 | 질의 → 인용 답변 → `synthesis/` 보관 | 완료 |
 | Lint LLM 판단 4종 · Marp 내보내기 | 완료 |
 | 공급자별 위키 접근 — 당겨 가기(MCP) · 밀어 넣기 | 완료 |
-| CO-Hub 서버, Contribute/Adopt, 동기화 | 미착수 |
+| **CO-Hub 서버** — 동시 쓰기 무손실, 콘텐츠 주소 blob, 이벤트 커서 | 완료 |
+| Contribute/Adopt, 동기화 클라이언트, 검토 큐 | 미착수 |
 | Codex 어댑터 · NSIS 패키징 | 사내 환경 필요 |
 
-자동 검사 322건이 통과합니다. 세부 마일스톤은 [`docs/PLAN.md`](docs/PLAN.md) §12,
+자동 검사 344건이 통과합니다 (앱 322 · 허브 22). 세부 마일스톤은 [`docs/PLAN.md`](docs/PLAN.md) §12,
 남은 작업은 [`docs/ROADMAP.md`](docs/ROADMAP.md), 구현 중 나온 측정은
 [`docs/M1-NOTES.md`](docs/M1-NOTES.md)와 [`docs/M2-PLAN.md`](docs/M2-PLAN.md)를 보십시오.
 
@@ -174,7 +175,6 @@ Jaro-Winkler 임계는 0.92가 아니라 0.96이어야 합니다.
 
 | # | 남은 작업 | 구분 |
 |---|---|---|
-| 15 | CO-Hub 서버 (Ubuntu 리눅스) | **A** |
 | 16 | 동기화 클라이언트 — 기여·채택·3-way 병합·오프라인 큐 | **A** |
 | 17 | 추출기 자가검사 스크립트 | 스크립트 **A** / 수치 **B1** |
 | 18 | 엔티티 유사도 자가검사 스크립트 | 스크립트 **A** / 수치 **B1** |
