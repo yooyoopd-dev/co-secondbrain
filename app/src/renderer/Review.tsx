@@ -16,12 +16,15 @@ export default function ReviewOverlay({
   onApply,
   onCancel,
   onJump,
+  onEdit,
 }: {
   review: Review;
   busy: boolean;
   onApply: (approved: string[]) => void;
   onCancel: () => void;
   onJump: (sourceId: string, locator: string) => void;
+  /** 고친 내용을 저장하면 관문을 다시 돌린 검토 결과가 온다 */
+  onEdit: (path: string, content: string) => void;
 }) {
   // 문제가 있는 카드는 처음부터 보류다. 사람이 일부러 승인 목록에 넣어야 한다.
   const [approved, setApproved] = useState<string[]>(() =>
@@ -67,7 +70,15 @@ export default function ReviewOverlay({
           )}
 
           {review.ops.map((o) => (
-            <Card key={o.op.path} op={o} approved={approved.includes(o.op.path)} onToggle={() => toggle(o.op.path)} onJump={onJump} />
+            <Card
+              key={o.op.path}
+              op={o}
+              approved={approved.includes(o.op.path)}
+              busy={busy}
+              onToggle={() => toggle(o.op.path)}
+              onJump={onJump}
+              onEdit={onEdit}
+            />
           ))}
         </div>
       </div>
@@ -78,16 +89,21 @@ export default function ReviewOverlay({
 function Card({
   op,
   approved,
+  busy,
   onToggle,
   onJump,
+  onEdit,
 }: {
   op: OpReview;
   approved: boolean;
+  busy: boolean;
   onToggle: () => void;
   onJump: (sourceId: string, locator: string) => void;
+  onEdit: (path: string, content: string) => void;
 }) {
   const rows = sideBySide(op.diff);
   const flagged = op.violations.length > 0 || op.conflict !== null;
+  const [draft, setDraft] = useState<string | null>(null);
 
   return (
     <section style={{ ...S.card, borderColor: flagged ? 'var(--danger)' : approved ? 'var(--border-strong)' : 'var(--border)' }}>
@@ -134,13 +150,47 @@ function Card({
         </div>
       )}
 
-      <DiffTable rows={rows} />
+      {draft === null ? (
+        <DiffTable rows={rows} />
+      ) : (
+        <textarea
+          style={S.editor}
+          value={draft}
+          spellCheck={false}
+          aria-label={`${op.title} 편집`}
+          onChange={(e) => setDraft(e.target.value)}
+        />
+      )}
 
       <div style={S.cardFoot}>
         <label style={S.check}>
           <input type="checkbox" checked={approved} onChange={onToggle} />
           {approved ? '승인' : '보류'}
         </label>
+        <span style={{ flex: 1 }} />
+        {draft === null ? (
+          // 삭제는 고칠 내용이 없다
+          op.after !== null && (
+            <button disabled={busy} onClick={() => setDraft(op.after ?? '')}>
+              편집
+            </button>
+          )
+        ) : (
+          <>
+            <button disabled={busy} onClick={() => setDraft(null)}>
+              편집 취소
+            </button>
+            <button
+              disabled={busy || draft === op.after}
+              onClick={() => {
+                onEdit(op.op.path, draft);
+                setDraft(null);
+              }}
+            >
+              고쳐서 반영
+            </button>
+          </>
+        )}
       </div>
     </section>
   );
@@ -229,6 +279,12 @@ const S = {
   add: { borderLeftColor: 'var(--ok)', background: '#0c1a0f' },
   del: { borderLeftColor: 'var(--danger)', background: '#1c0f0f' },
 
-  cardFoot: { marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--border)' },
+  cardFoot: { marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--border)', display: 'flex', gap: 6, alignItems: 'center' },
+  editor: {
+    width: '100%', minHeight: 260, marginTop: 10, padding: 'var(--s)', resize: 'vertical',
+    fontFamily: 'var(--mono)', fontSize: '0.75rem', lineHeight: 1.5,
+    background: 'var(--bg-canvas)', color: 'var(--fg)',
+    border: '1px solid var(--border-strong)', borderRadius: 'var(--r-input)',
+  },
   check: { display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '0.875rem', cursor: 'pointer' },
 } satisfies Record<string, React.CSSProperties>;

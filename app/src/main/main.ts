@@ -100,6 +100,7 @@ function registerIpc(): void {
   ipcMain.handle(IPC.propose, (_e, id: string) => store.propose(id));
   ipcMain.handle(IPC.applyReview, (_e, approved: string[]) => store.applyReview(approved));
   ipcMain.handle(IPC.discardReview, () => store.discardReview());
+  ipcMain.handle(IPC.editOp, (_e, path: string, content: string) => store.editOp(path, content));
   ipcMain.handle(IPC.spendStatus, () => store.spendStatus());
   ipcMain.handle(IPC.plan, () => store.plan());
   ipcMain.handle(IPC.ask, (_e, q: string) => store.ask(q));

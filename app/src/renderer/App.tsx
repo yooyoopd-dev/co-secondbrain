@@ -130,6 +130,16 @@ export default function App() {
     }
   };
 
+  // 고친 내용은 관문을 다시 통과해야 한다. main 이 재검사한 결과로 화면을 갈아 끼운다.
+  const editOp = async (path: string, content: string) => {
+    setBusy(true);
+    try {
+      setReview(await window.sb.editOp(path, content));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const discardReview = async () => {
     await window.sb.discardReview();
     setReview(null);
@@ -238,6 +248,7 @@ export default function App() {
           onApply={applyReview}
           onCancel={discardReview}
           onJump={(sourceId, locator) => void jump(sourceId, locator)}
+          onEdit={(path, content) => void editOp(path, content)}
         />
       )}
     </div>

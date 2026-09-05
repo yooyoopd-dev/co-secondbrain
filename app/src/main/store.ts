@@ -8,7 +8,7 @@ import { extractFile, buildThreads } from '../core/extract/index.ts';
 import { extractEmail, type MailMeta } from '../core/extract/email.ts';
 import { safeJoin } from '../core/security.ts';
 import { applyChangeSet, currentHash, type ApplyResult, type ChangeSet } from '../core/changeset.ts';
-import { buildReview, selectOps, type Review } from '../core/review.ts';
+import { buildReview, editOp, selectOps, type Review } from '../core/review.ts';
 import { snapshot } from '../core/history.ts';
 import { readWikiPages, writeIndex } from '../core/wiki.ts';
 import { createCli } from '../core/agent/index.ts';
@@ -247,6 +247,17 @@ export class Store {
 
   discardReview(): void {
     this.#pending = null;
+  }
+
+  /**
+   * 검토 화면에서 사람이 고친 내용을 반영한다. **관문을 다시 돌린다** —
+   * 앞머리를 깨거나 없는 앵커를 넣으면 승인이 막힌다.
+   */
+  async editOp(path: string, content: string): Promise<Review> {
+    const v = this.#require();
+    if (!this.#pending) throw new Error('검토 중인 변경안이 없습니다');
+    this.#pending = editOp(this.#pending, path, content);
+    return buildReview(v, this.#pending, await this.#anchors());
   }
 
   /* ---------- 질의 (PLAN.md §4 Query) ---------- */

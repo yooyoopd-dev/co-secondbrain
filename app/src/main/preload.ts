@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('sb', {
   propose: (id: string) => ipcRenderer.invoke(IPC.propose, id),
   applyReview: (approved: string[]) => ipcRenderer.invoke(IPC.applyReview, approved),
   discardReview: () => ipcRenderer.invoke(IPC.discardReview),
+  editOp: (path: string, content: string) => ipcRenderer.invoke(IPC.editOp, path, content),
   spendStatus: () => ipcRenderer.invoke(IPC.spendStatus),
   plan: () => ipcRenderer.invoke(IPC.plan),
   ask: (q: string) => ipcRenderer.invoke(IPC.ask, q),

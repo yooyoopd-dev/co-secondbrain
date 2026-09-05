@@ -86,7 +86,7 @@ IP 주소)가 팀원 사이를 중계합니다. CO-Hub는 SQLite와 블롭 저�
 | 원본 추출(이메일·Word·Excel·PPTX·PDF·전사) · FTS 검색 · Vault | 완료 |
 | 링크 그래프 · Lint 계산 검사 7종 · `index.md` 자동 조립 | 완료 |
 | LLM CLI 어댑터 — Claude Code(A등급) · Gemini(B등급) · 배치 세션 재개 | 완료 |
-| **diff 검토 UI** — 관문 8. 승인해야 디스크에 닿는다 | 완료 |
+| **diff 검토 UI** — 관문 8. 승인해야 디스크에 닿는다. 편집 후 승인도 관문을 다시 거친다 | 완료 |
 | Electron 창 + IPC | 완료 (Windows 실렌더링은 미검증) |
 | 시맨틱 캐시 · 지출 계량기 · 공급자 라우팅 | 완료 |
 | 내장 MCP 서버 — 에이전트가 위키를 당겨 간다 | 완료 |
@@ -96,7 +96,7 @@ IP 주소)가 팀원 사이를 중계합니다. CO-Hub는 SQLite와 블롭 저�
 | CO-Hub 서버, Contribute/Adopt, 동기화 | 미착수 |
 | Codex 어댑터 · NSIS 패키징 | 사내 환경 필요 |
 
-자동 검사 315건이 통과합니다. 세부 마일스톤은 [`docs/PLAN.md`](docs/PLAN.md) §12,
+자동 검사 322건이 통과합니다. 세부 마일스톤은 [`docs/PLAN.md`](docs/PLAN.md) §12,
 남은 작업은 [`docs/ROADMAP.md`](docs/ROADMAP.md), 구현 중 나온 측정은
 [`docs/M1-NOTES.md`](docs/M1-NOTES.md)와 [`docs/M2-PLAN.md`](docs/M2-PLAN.md)를 보십시오.
 
@@ -174,7 +174,6 @@ Jaro-Winkler 임계는 0.92가 아니라 0.96이어야 합니다.
 
 | # | 남은 작업 | 구분 |
 |---|---|---|
-| 14 | "편집 후 승인" 편집기 | **A** |
 | 15 | CO-Hub 서버 (Ubuntu 리눅스) | **A** |
 | 16 | 동기화 클라이언트 — 기여·채택·3-way 병합·오프라인 큐 | **A** |
 | 17 | 추출기 자가검사 스크립트 | 스크립트 **A** / 수치 **B1** |

@@ -140,4 +140,4 @@ async function readOrNull(p: string): Promise<string | null> {
   }
 }
 
-export { applyBlockReason, canApply, selectOps } from './approve.ts';
+export { applyBlockReason, canApply, editOp, selectOps } from './approve.ts';

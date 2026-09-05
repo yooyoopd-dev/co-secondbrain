@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import pathMod from 'node:path';
 import { diffLines, diffStat, MAX_LINES } from '../src/core/diff.ts';
 import { buildReview, canApply, selectOps, GLOBAL_PATH } from '../src/core/review.ts';
 import { applyChangeSet, type ChangeSet } from '../src/core/changeset.ts';
@@ -281,4 +282,77 @@ test('렌더러가 끌고 오는 모듈에 Node 모듈이 없다', async () => {
   }
   assert.ok(seen.size > 3, `렌더러 파일을 못 찾았습니다: ${seen.size}`);
   assert.deepEqual(offenders, []);
+});
+
+/* ---------------- 편집 후 승인 (ROADMAP 14번) ---------------- */
+
+import { editOp } from '../src/core/approve.ts';
+
+const twoOps = (): ChangeSet => ({
+  summary: 's',
+  discussion: '물어볼 것',
+  ops: [
+    { op: 'create', path: 'wiki/entities/a.md', baseHash: null, content: OK_PAGE },
+    { op: 'create', path: 'wiki/entities/b.md', baseHash: null, content: OK_PAGE },
+  ],
+});
+
+test('편집 — 지정한 op 만 바뀌고 나머지는 그대로다', () => {
+  const cs = twoOps();
+  const out = editOp(cs, 'wiki/entities/b.md', '고친 내용');
+  assert.equal(out.ops[0]!.content, OK_PAGE);
+  assert.equal(out.ops[1]!.content, '고친 내용');
+  assert.equal(out.summary, 's');
+  assert.equal(out.discussion, '물어볼 것');
+});
+
+test('편집 — 원본 ChangeSet 을 건드리지 않는다', () => {
+  const cs = twoOps();
+  editOp(cs, 'wiki/entities/a.md', '고친 내용');
+  assert.equal(cs.ops[0]!.content, OK_PAGE);
+});
+
+test('편집 — 없는 경로면 아무것도 안 바뀐다', () => {
+  const cs = twoOps();
+  assert.deepEqual(editOp(cs, 'wiki/entities/없음.md', 'x'), cs);
+});
+
+test('편집 — delete 는 내용이 없으므로 그대로 둔다', () => {
+  const cs: ChangeSet = { summary: 's', ops: [{ op: 'delete', path: 'wiki/entities/a.md', baseHash: 'h' }] };
+  assert.deepEqual(editOp(cs, 'wiki/entities/a.md', 'x'), cs);
+});
+
+test('편집한 내용도 관문을 다시 통과해야 한다 — 편집이 관문 8 을 건너뛰는 문이 되면 안 된다', async () => {
+  const v = await vault();
+  const path = 'wiki/entities/a.md';
+  const cs: ChangeSet = { summary: 's', ops: [{ op: 'create', path, baseHash: null, content: OK_PAGE }] };
+  assert.equal(canApply(await buildReview(v, cs, ANCHORS), [path]), true);
+
+  // 앞머리를 깨면 관문 1 이 잡는다
+  const broken = await buildReview(v, editOp(cs, path, '# 제목만 있다'), ANCHORS);
+  assert.ok(broken.ops[0]!.violations.length > 0);
+  assert.equal(canApply(broken, [path]), false);
+
+  // 없는 앵커를 넣으면 관문 5 가 잡는다
+  const fake = await buildReview(v, editOp(cs, path, OK_PAGE.replace('slide-3', 'slide-99')), ANCHORS);
+  assert.ok(fake.ops[0]!.violations.some((x) => x.gate === 5));
+  assert.equal(canApply(fake, [path]), false);
+});
+
+test('편집으로 위반을 고치면 다시 승인할 수 있다', async () => {
+  const v = await vault();
+  const path = 'wiki/entities/a.md';
+  const bad: ChangeSet = { summary: 's', ops: [{ op: 'create', path, baseHash: null, content: '깨진 페이지' }] };
+  assert.equal(canApply(await buildReview(v, bad, ANCHORS), [path]), false);
+  assert.equal(canApply(await buildReview(v, editOp(bad, path, OK_PAGE), ANCHORS), [path]), true);
+});
+
+test('편집한 내용이 승인 시 그대로 디스크에 간다', async () => {
+  const v = await vault();
+  const path = 'wiki/entities/a.md';
+  const edited = OK_PAGE.replace('주 협력사다.', '사람이 고쳐 쓴 문장이다.');
+  const cs = editOp({ summary: 's', ops: [{ op: 'create', path, baseHash: null, content: OK_PAGE }] }, path, edited);
+  const res = await applyChangeSet(v, cs, ANCHORS);
+  assert.deepEqual(res.applied, [path]);
+  assert.equal(await fs.readFile(pathMod.join(v.root, path), 'utf8'), edited);
 });

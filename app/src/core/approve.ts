@@ -5,6 +5,23 @@
 import type { ChangeSet } from './changeset.ts';
 import type { Review } from './review.ts';
 
+/**
+ * 사람이 고친 내용으로 op 하나를 바꾼다. `DESIGN-SYSTEM.md` 가 검토 카드에 둔
+ * "편집 후 승인" 이다.
+ *
+ * **고친 내용도 관문을 다시 통과해야 한다.** 여기서는 갈아 끼우기만 하고 판정하지 않는다 —
+ * 부르는 쪽이 `buildReview` 를 다시 돌려 위반과 충돌을 새로 계산한다. 편집이 관문을
+ * 건너뛰는 문이 되면 관문 8 이 무의미해진다.
+ *
+ * `delete` 는 내용이 없으므로 그대로 둔다.
+ */
+export function editOp(cs: ChangeSet, path: string, content: string): ChangeSet {
+  return {
+    ...cs,
+    ops: cs.ops.map((o) => (o.path === path && o.op !== 'delete' ? { ...o, content } : o)),
+  };
+}
+
 /** 사람이 승인한 경로만 남긴다. 거부한 op 은 아예 빠진 채로 적용된다. */
 export function selectOps(cs: ChangeSet, approved: readonly string[]): ChangeSet {
   const keep = new Set(approved);
