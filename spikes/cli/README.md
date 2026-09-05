@@ -161,3 +161,63 @@ Gemini에는 `--json-schema`(Claude Code)·`--output-schema`(Codex)에 해당하
 
 `schema`가 **90% 미만이면** 재시도 비용이 절감분을 잠식할 수 있습니다.
 그 경우 Gemini 라우팅 대상을 줄이거나(§3 표), 프롬프트를 더 강하게 잡아야 합니다.
+
+---
+
+## W2 · W3 · W3b — 회수 스크립트 `record.mjs`
+
+사내 PC 에서 **이 파일 하나만** 돌립니다. 사내에서 개발하지 않습니다.
+회수한 원시 응답으로 파서를 개발 쪽에서 완성합니다 ([`docs/ROADMAP.md`](../../docs/ROADMAP.md) §4).
+
+```
+node spikes/cli/record.mjs
+```
+
+의존성이 없어 `npm install` 없이 Node 만 있으면 됩니다.
+
+| 옵션 | 기본 | 뜻 |
+|---|---|---|
+| `--only <cli>` | 전체 | `claude-code` · `gemini` · `codex` 중 하나만 |
+| `--n <건수>` | 3 | 원본 사례 수 |
+| `--timeout <초>` | 180 | 한 건당 대기 상한. 넘으면 포기하고 다음으로 |
+| `--out <경로>` | `spikes/fixtures/cli` | 출력 폴더 |
+
+### 무엇이 나오는가
+
+```
+claude-code  2.1.261 (Claude Code)  /opt/node22/bin/claude
+  kickoff   PASS    35125ms  claude-code-kickoff.txt
+  ...
+3/3 PASS · 회수만 0건 · 없는 앵커 인용 0건
+```
+
+`--only` 로 나눠 돌려도 `summary.json` 에 이어 붙습니다. 앞 결과가 사라지지 않습니다.
+
+- **PASS** — 유효한 ChangeSet 을 냈고 검사를 전부 통과
+- **FAIL** — 검사에서 걸림. 없는 앵커를 인용하면 **종료 코드 1** (`CLAUDE.md` §9)
+- **회수만** — 응답 봉투 형태를 아직 모르는 CLI. 원시 응답만 저장하고 실패로 세지 않는다
+- **무응답** — 상한 안에 아무것도 못 받음. `*.stderr.txt` 에 사유가 있다
+
+### 사내에서 확인해 줄 것
+
+1. 실행 파일 경로 옆에 `[shell 경유 — 인용부호 주의]` 가 뜨는가.
+   `claude --json-schema` 는 인라인 JSON 만 받아서(파일 경로 거부, 2026-09-05 실측)
+   스키마 약 1.5KB 가 argv 로 나갑니다. 그 안에 `^` `|` `\` 가 있어 cmd 를 거치면 위험합니다
+2. Codex 가 설치돼 있으면 `codex-*.txt` 가 나오는가 — **W3b 의 목적**
+3. 기업계정 Gemini 도 개인 계정처럼 펜스 없는 순수 JSON 을 내는가
+
+### 반출 안전
+
+입력이 **전부 합성 데이터**입니다. 스크립트가 사내 문서를 읽지 않으므로 출력 폴더를
+그대로 저장소에 커밋해도 됩니다. 사내 문서를 다루는 검증(W4 · W5)은 다른 스크립트이고
+집계 수치만 회수합니다 ([`docs/ROADMAP.md`](../../docs/ROADMAP.md) §3).
+
+### 개발 컨테이너 실측 (2026-09-05, Linux)
+
+| CLI | 결과 |
+|---|---|
+| `claude` 2.1.261 | 3/3 PASS · 합계 $0.1859 |
+| `gemini` 0.58.0 (개인 API 키) | 3/3 PASS · 3건 전부 펜스 없는 순수 JSON |
+| `codex` 0.153.2 | 회수 불가 — `api.openai.com` 이 조직 정책으로 차단 |
+
+회수한 6건은 `app/test/record.test.ts` 에서 앱의 관문 7개로 다시 검사합니다.
