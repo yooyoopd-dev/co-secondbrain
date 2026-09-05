@@ -478,8 +478,8 @@ Warning: MCP servers are configured but disabled because this folder is untruste
 > 이유와 정면으로 충돌하므로 하지 않습니다.
 >
 > **결론: Gemini 는 읽기 경로(안 B)를 쓸 수 없습니다.** 밀어 넣기(안 A)로만 가능합니다.
-> 라우팅에서 읽기 경로 작업(`query` · `synthesis` · `lint.judgment`)은 MCP 에 붙을 수 있는
-> 공급자로만 갑니다. 상세는 [`M2-PLAN.md`](M2-PLAN.md) §12.2.
+> `query` · `synthesis` 는 MCP 에 붙는 공급자로만 가고, 전수 스캔인 `lint.judgment` 는
+> 밀어 넣기로 Gemini 에 남습니다. 상세는 [`M2-PLAN.md`](M2-PLAN.md) §12.2 · §13.
 
 훅·프로젝트 에이전트도 같은 게이트에 걸리므로, Gemini 어댑터는 모든 호출에
 `--skip-trust`를 붙입니다 — 쓰기 경로에서는 여전히 필요합니다.
@@ -511,7 +511,7 @@ Warning: MCP servers are configured but disabled because this folder is untruste
 | 작업 | 기본 공급자 | 자동 폴백 | 근거 |
 |---|---|---|---|
 | `ingest.batch` 대량 백로그 | **Gemini** | — | 토큰 최대, 반복적 |
-| `lint.judgment` Lint LLM 4종 | ~~Gemini~~ **A등급** | **금지** | 읽기 경로다. Gemini 가 MCP 에 못 붙는다 (위 W3a 실측) |
+| `lint.judgment` Lint LLM 4종 | **Gemini** | — | 전수 스캔. 어차피 다 읽으므로 밀어 넣기로 보낸다 |
 | `dedup.ambiguous` 중복 애매 구간 | **Gemini** | — | 후보 제시일 뿐, 병합은 사람 승인 |
 | `ingest.single` 감독 모드 | A등급 | 허용 | 사람이 옆에서 봄 |
 | `query` · `synthesis` | A등급 | 허용 | 답변 품질이 곧 신뢰 |
@@ -875,6 +875,6 @@ A등급 경로는 사내 PC 없이 개발합니다. 사내 PC의 몫은 **응답
 | W4 | 실제 사내 문서로 추출기 재검증 (`.msg`, 한글 PDF, 수식 xlsx) — **문서 반출 없이 집계 수치만 회수**([`ROADMAP.md`](ROADMAP.md) §3.2) | M1 중 |
 | W5 | 한국어 엔티티명 100쌍+ 유사도 재측정 — **이름 반출 없이 건수와 분포만 회수**([`ROADMAP.md`](ROADMAP.md) §3.3) | M4 전 |
 | W6 | 스캔본 감지 임계 재보정 | M1 중 |
-| W7~W9 | 허브 SQLite 처리량 · 대용량 blob · nssm 서비스 등록 | M5 전 |
+| W7~W9 | 허브 SQLite 처리량 · 대용량 blob · systemd 서비스 등록 (허브는 **Ubuntu 리눅스 PC**) | M5 전 |
 | W10 | **한국어 문자 수 → 토큰 수 환산** — Lint 전수 검사 토큰 추정의 근거 | M2 중 |
 | W11 | Gemini 사내 쿼터 실제 상한 | 설정 기본값용 |

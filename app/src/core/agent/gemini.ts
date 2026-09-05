@@ -37,21 +37,28 @@ export interface Extracted {
   reason: string | null;
 }
 
-/** 형식까지 본다. 관문에서 걸릴 것을 여기서 알면 왕복 한 번을 아낀다. */
-export function extract(stdout: string): Extracted {
+/** ChangeSet 을 요청했을 때 쓰는 검증기. 관문에서 걸릴 것을 여기서 알면 왕복을 아낀다. */
+export function validateChangeSet(data: unknown): string | null {
+  const v = validateShape(data as ChangeSet);
+  return v.length > 0 ? v.map((x) => `${x.path}: ${x.reason}`).join(' / ') : null;
+}
+
+/**
+ * 형식까지 본다. **무엇을 요청했는지는 호출자가 안다** — 검증기를 안 주면 JSON 이
+ * 객체인지만 본다. 어댑터가 모양을 넘겨짚으면 다른 스키마를 쓰는 작업이 전부 막힌다.
+ */
+export function extract(stdout: string, validate?: (data: unknown) => string | null): Extracted {
   const body = stripFence(stdout);
   if (!body) return { cs: null, reason: '응답이 비었습니다' };
-  let cs: ChangeSet;
+  let cs: unknown;
   try {
-    cs = JSON.parse(body) as ChangeSet;
+    cs = JSON.parse(body);
   } catch (e) {
     return { cs: null, reason: `JSON 이 아닙니다: ${e instanceof Error ? e.message : String(e)}` };
   }
-  const v = validateShape(cs);
-  if (v.length > 0) {
-    return { cs: null, reason: v.map((x) => `${x.path}: ${x.reason}`).join(' / ') };
-  }
-  return { cs, reason: null };
+  if (!cs || typeof cs !== 'object') return { cs: null, reason: 'JSON 객체가 아닙니다' };
+  const reason = validate?.(cs) ?? null;
+  return reason ? { cs: null, reason } : { cs: cs as ChangeSet, reason: null };
 }
 
 /**
@@ -116,12 +123,12 @@ export function createGemini(exec: Exec = realExec): AgentCli {
       if (!first.stdout.trim()) {
         return fail(`CLI 가 출력 없이 종료했습니다 (code=${first.code}): ${first.stderr.trim().slice(0, 300)}`, first.stdout);
       }
-      const a = extract(first.stdout);
+      const a = extract(first.stdout, job.validate);
       if (a.cs) return { ok: true, data: stampProvider(a.cs, 'gemini'), sessionId: null, usage: ZERO_USAGE, raw: first.stdout };
 
       // 재요청은 1회 고정이다 (PLAN.md §9.4). 조용히 더 돌지 않는다.
       const second = await call(retryPrompt(prompt, a.reason ?? ''));
-      const b = extract(second.stdout);
+      const b = extract(second.stdout, job.validate);
       if (b.cs) return { ok: true, data: stampProvider(b.cs, 'gemini'), sessionId: null, usage: ZERO_USAGE, raw: second.stdout };
 
       return fail(`형식이 두 번 다 틀렸습니다. 1차: ${a.reason} / 2차: ${b.reason}`, second.stdout || first.stdout);

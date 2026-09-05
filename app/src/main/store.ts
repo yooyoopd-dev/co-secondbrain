@@ -12,7 +12,8 @@ import { buildReview, selectOps, type Review } from '../core/review.ts';
 import { snapshot } from '../core/history.ts';
 import { readWikiPages, writeIndex } from '../core/wiki.ts';
 import { createCli } from '../core/agent/index.ts';
-import { route, type TaskKind } from '../core/agent/router.ts';
+import { validateChangeSet } from '../core/agent/gemini.ts';
+import { MCP_CAPABLE, route, type TaskKind } from '../core/agent/router.ts';
 import { hashContent, markProposed, planWork, readManifest, recordSource, writeManifest, type Manifest, type SourceState, type WorkPlan } from '../core/cache.ts';
 import { DEFAULT_MONTHLY_USD, EMPTY_LOG, add as addSpend, status as spendStatus, type Limits, type SpendLog, type Status } from '../core/spend.ts';
 import { read as readSpend, write as writeSpend } from '../core/spend-file.ts';
@@ -21,7 +22,7 @@ import { CHANGESET_SCHEMA } from '../core/agent/schema.ts';
 import { conventionFile, promptFor, type WikiRef } from '../core/agent/ingest.ts';
 import { ALLOWED_TOOLS, mcpConfig, type McpLaunch } from '../core/mcp/config.ts';
 import { ANSWER_SCHEMA, parseAnswer, questionPrompt, toChangeSet, type Answer } from '../core/query.ts';
-import { JUDGMENT_SCHEMA, judgmentPrompt, parseJudgment, summarizeJudgment, type ParsedJudgment } from '../core/lint/judgment.ts';
+import { JUDGMENT_SCHEMA, judgmentPrompt, judgmentPromptPush, parseJudgment, summarizeJudgment, type ParsedJudgment } from '../core/lint/judgment.ts';
 import { toMarp } from '../core/marp.ts';
 import { estimateScan, type ScanEstimate } from '../core/tokens.ts';
 import { disposeWorkdir, prepareWorkdir } from '../core/agent/workdir.ts';
@@ -209,7 +210,7 @@ export class Store {
     const wd = await prepareWorkdir({ [cli.conventionFile]: conventionFile(agentsMd) });
     try {
       const r = await cli.run(
-        { workdir: wd.root, prompt: promptFor(ext, await this.#wikiRefs()) },
+        { workdir: wd.root, prompt: promptFor(ext, await this.#wikiRefs()), validate: validateChangeSet },
         CHANGESET_SCHEMA,
       );
       // 실패해도 돈은 나갔다. 성공만 세면 계량기가 실제보다 낮게 나온다.
@@ -273,6 +274,7 @@ export class Store {
           workdir: wd.root,
           prompt: questionPrompt(question),
           mcp: { configPath: safeJoin(wd.root, 'mcp.json'), allowedTools: ALLOWED_TOOLS },
+          validate: (d) => parseAnswer(d).reason,
         },
         ANSWER_SCHEMA,
       );
@@ -304,8 +306,6 @@ export class Store {
    */
   async lintJudgment(provider?: ProviderId): Promise<JudgmentResult> {
     const v = this.#require();
-    if (!this.#mcpLaunch) return { ok: false, error: '읽기 경로가 설정되지 않았습니다' };
-
     const now = new Date().toISOString();
     const overLimit = this.spendStatus(now).filter((s) => s.level === 'over').map((s) => s.provider);
     const picked = provider
@@ -316,14 +316,31 @@ export class Store {
     const { entries } = await readWikiPages(v);
     if (entries.length === 0) return { ok: false, error: '검사할 페이지가 없습니다' };
 
+    // MCP 에 붙는 공급자는 당겨 가고, 못 붙으면 밀어 넣는다 (PLAN.md §7.2 안 B / 안 A).
+    // 전수 스캔은 어차피 다 읽으므로 두 방식의 결과가 같다 — 값만 다르다.
+    const pull = MCP_CAPABLE.includes(picked.provider);
+    if (pull && !this.#mcpLaunch) return { ok: false, error: '읽기 경로가 설정되지 않았습니다' };
+
+    let prompt: string;
+    if (pull) {
+      prompt = judgmentPrompt(entries);
+    } else {
+      const built = judgmentPromptPush(entries);
+      if ('error' in built) return { ok: false, error: built.error };
+      prompt = built.prompt;
+    }
+
     const cli = createCli(picked.provider);
-    const wd = await prepareWorkdir({ 'mcp.json': JSON.stringify(mcpConfig(this.#mcpLaunch(v.root)), null, 1) });
+    const wd = await prepareWorkdir(
+      pull ? { 'mcp.json': JSON.stringify(mcpConfig(this.#mcpLaunch!(v.root)), null, 1) } : {},
+    );
     try {
       const r = await cli.run(
         {
           workdir: wd.root,
-          prompt: judgmentPrompt(entries),
-          mcp: { configPath: safeJoin(wd.root, 'mcp.json'), allowedTools: ALLOWED_TOOLS },
+          prompt,
+          ...(pull ? { mcp: { configPath: safeJoin(wd.root, 'mcp.json'), allowedTools: ALLOWED_TOOLS } } : {}),
+          validate: (d) => parseJudgment(d, new Set(entries.map((e) => e.path))).reason,
         },
         JUDGMENT_SCHEMA,
       );

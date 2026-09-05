@@ -49,6 +49,14 @@ export interface AgentJob {
    * "사람 승인 전에는 안 쓴다" 는 원칙을 지킬 수 없다.
    */
   mcp?: { configPath: string; allowedTools: readonly string[] };
+  /**
+   * B등급(스키마 강제 불가) 공급자가 다시 물을지 정할 때 쓴다. `null` 이면 통과,
+   * 문자열이면 그 사유를 붙여 한 번 다시 묻는다.
+   *
+   * **어댑터가 모양을 넘겨짚지 않는다.** 예전에는 무조건 ChangeSet 으로 검증해서
+   * Lint 판단 검사 응답이 항상 거부됐다.
+   */
+  validate?: (data: unknown) => string | null;
 }
 
 export interface AgentResult {

@@ -27,16 +27,34 @@ Node 20+ / Fastify / better-sqlite3 / 파일시스템 blob store
 ```
 
 ```
-C:\co-hub\
+/srv/co-hub/
 ├─ hub.sqlite
-├─ blobs\
-│   └─ 9f\2a\9f2a3c...            # sha256 앞 4자리로 분산
+├─ blobs/
+│   └─ 9f/2a/9f2a3c...            # sha256 앞 4자리로 분산
 ├─ config.json
-└─ co-hub.exe                     # 또는 node server.js
+└─ server.js
 ```
 
-Windows 서비스 등록은 `nssm`. Docker 이미지도 제공하되 사내에서 Docker를 못 쓰는 경우가
-많으므로 **단일 실행 파일이 기본 배포 형태**입니다.
+**허브는 최신 Ubuntu 리눅스 PC에서 돕니다** (2026-09-05 확인). 클라이언트만 Windows입니다.
+
+서비스 등록은 **systemd**. Docker 이미지도 제공하되 사내에서 Docker를 못 쓰는 경우가
+많으므로 **systemd 유닛이 기본 배포 형태**입니다.
+
+```ini
+# /etc/systemd/system/co-hub.service
+[Unit]
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/node /srv/co-hub/server.js
+WorkingDirectory=/srv/co-hub
+Restart=always
+User=co-hub
+[Install]
+WantedBy=multi-user.target
+```
+
+방화벽은 `ufw` 로 사내 대역만 엽니다. 인터넷 노출은 없습니다.
 
 `config.json`:
 
@@ -291,7 +309,7 @@ blob 합계       2.83 GB      ← DB의 187배
 ## 8. M0에서 확인할 것
 
 1. ~~원본 500건 프로젝트의 `page_versions` 누적 크기~~ **완료** — 12.7MB (§7)
-2. 사내 PC 사양에서 동시 5인 쓰기 시 SQLite WAL 처리량
+2. 사내 리눅스 PC 사양에서 동시 5인 쓰기 시 SQLite WAL 처리량
 3. 대용량 blob(200MB PPT) 업로드·Range 다운로드 안정성
-4. Windows 서비스 등록(nssm) 및 방화벽 인바운드 규칙 절차
+4. systemd 유닛 등록 및 `ufw` 인바운드 규칙 절차 (Ubuntu)
 5. MCP HTTP 엔드포인트를 CLI 3종이 실제로 붙는지 (§5.5 전제 확인)

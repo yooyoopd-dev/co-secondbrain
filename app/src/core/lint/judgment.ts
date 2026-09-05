@@ -51,6 +51,28 @@ export const JUDGMENT_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+/**
+ * 위키에 닿는 두 가지 방법. PLAN.md §7.2 의 안 A·안 B 와 같다.
+ *
+ * - `pull` — 목록만 주고 에이전트가 MCP 로 당겨 간다. 싸다. A등급 전용
+ * - `push` — 본문을 프롬프트에 밀어 넣는다. 비싸지만 MCP 가 없어도 된다.
+ *   Gemini 가 폴더 신뢰 게이트 때문에 MCP 에 못 붙어서 필요하다 (M2-PLAN.md §12.2)
+ */
+export type WikiAccess = 'pull' | 'push';
+
+/**
+ * 밀어 넣기 상한. 넘으면 거절한다.
+ *
+ * 한국어 1글자 ≈ 0.92토큰(`core/tokens.ts` 실측)이라 40만 자는 약 37만 토큰이다.
+ * Gemini 의 컨텍스트가 크더라도 이보다 크면 한 번에 판단할 물건이 아니다.
+ */
+export const PUSH_CHAR_CAP = 400_000;
+
+/** 밀어 넣을 때 실제로 보내는 글자 수. 실행 전에 사람에게 보여준다. */
+export function pushSize(entries: readonly WikiEntry[]): number {
+  return entries.reduce((n, e) => n + e.page.front.summary.length + e.page.body.length + e.path.length, 0);
+}
+
 /** 페이지 목록만 준다. 본문은 에이전트가 `get_page` 로 가져간다. */
 export function judgmentPrompt(entries: readonly WikiEntry[]): string {
   const list = entries.map((e) => `- ${e.path} — ${e.page.front.title}`).join('\n');
@@ -78,6 +100,24 @@ ${list}
 - \`pages\` 에는 위 목록에 있는 경로만 쓴다. 없는 경로를 쓰면 그 지적은 버려진다
 - 4번은 없는 페이지의 이름을 \`message\` 에 쓰고 \`pages\` 에는 그것을 언급한 페이지를 넣는다
 - 지적할 것이 없으면 findings 를 빈 배열로 낸다. 억지로 채우지 않는다`;
+}
+
+/**
+ * 밀어 넣기 판본. 도구가 없으므로 본문을 통째로 넣는다.
+ * 검사 항목과 규칙은 당겨 가기 판본과 **같은 문장을 쓴다** — 팔이 갈리면 결과를 못 비교한다.
+ */
+export function judgmentPromptPush(entries: readonly WikiEntry[]): { prompt: string } | { error: string } {
+  const size = pushSize(entries);
+  if (size > PUSH_CHAR_CAP) {
+    return { error: `위키가 너무 큽니다 (${size.toLocaleString('ko')}자 · 상한 ${PUSH_CHAR_CAP.toLocaleString('ko')}자). MCP 를 쓰는 공급자로 돌리십시오` };
+  }
+  const pull = judgmentPrompt(entries);
+  const head = pull.slice(0, pull.indexOf('## 위키 페이지'));
+  const tail = pull.slice(pull.indexOf('## 규칙'));
+  const pages = entries
+    .map((e) => `### ${e.path}\n\n제목: ${e.page.front.title}\n요약: ${e.page.front.summary}\n갱신: ${e.page.front.updated}\n\n${e.page.body.trim()}`)
+    .join('\n\n');
+  return { prompt: `${head}## 위키 페이지 ${entries.length}장 (전문)\n\n${pages}\n\n${tail}` };
 }
 
 export interface ParsedJudgment {

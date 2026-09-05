@@ -406,7 +406,7 @@ test('스탬프 — 녹화된 Gemini 응답의 claude-code 표기가 고쳐진�
 
 /* ================= Gemini B등급 어댑터 (ROADMAP 3번) ================= */
 
-import { createGemini, extract, retryPrompt, withSchema, stripFence as gStripFence } from '../src/core/agent/gemini.ts';
+import { createGemini, extract, retryPrompt, validateChangeSet, withSchema, stripFence as gStripFence } from '../src/core/agent/gemini.ts';
 
 const OK_CS = JSON.stringify({ summary: 's', ops: [{ op: 'create', path: 'wiki/entities/a.md', baseHash: null, content: PAGE }] });
 
@@ -419,15 +419,24 @@ test('B등급 — 펜스가 있어도 없어도 뽑는다', () => {
 test('B등급 — 녹화된 실응답 3건이 전부 extract 를 통과한다', async () => {
   for (const id of ['kickoff', 'contract', 'cost']) {
     const raw = await fs.readFile(new URL(`../../spikes/fixtures/cli/gemini-${id}.txt`, import.meta.url), 'utf8');
-    assert.equal(extract(raw).reason, null, id);
+    assert.equal(extract(raw, validateChangeSet).reason, null, id);
   }
 });
 
+test('B등급 — 어댑터가 응답 모양을 넘겨짚지 않는다', () => {
+  // ChangeSet 으로 무조건 검증하다가 Lint 판단 검사 응답이 전부 거부됐다.
+  const judgment = JSON.stringify({ findings: [] });
+  assert.equal(extract(judgment).reason, null, '검증기 없이도 통과해야 한다');
+  assert.match(extract(judgment, validateChangeSet).reason ?? '', /summary/);
+  assert.equal(extract(judgment, (d) => ('findings' in (d as object) ? null : '없음')).reason, null);
+});
+
 test('B등급 — 형식이 틀리면 사유를 준다. 그게 재요청 문구가 된다', () => {
-  assert.match(extract('그냥 말').reason ?? '', /JSON 이 아닙니다/);
-  assert.match(extract('{"summary":"","ops":[]}').reason ?? '', /비었/);
-  assert.match(extract('').reason ?? '', /비었/);
-  assert.match(extract(JSON.stringify({ summary: 's', ops: [{ op: 'create', path: '탈출/../x.md', baseHash: null, content: PAGE }] })).reason ?? '', /경로 형식/);
+  assert.match(extract('그냥 말', validateChangeSet).reason ?? '', /JSON 이 아닙니다/);
+  assert.match(extract('{"summary":"","ops":[]}', validateChangeSet).reason ?? '', /비었/);
+  assert.match(extract('', validateChangeSet).reason ?? '', /비었/);
+  assert.match(extract('[1,2]', validateChangeSet).reason ?? '', /비었|형식/);
+  assert.match(extract(JSON.stringify({ summary: 's', ops: [{ op: 'create', path: '탈출/../x.md', baseHash: null, content: PAGE }] }), validateChangeSet).reason ?? '', /경로 형식/);
 });
 
 test('B등급 — 스키마는 프롬프트 뒤에 붙는다 (앞에 두면 캐시 접두사가 깨진다)', () => {
@@ -452,7 +461,7 @@ const gJob = { workdir: '/tmp/wd', prompt: '원본 내용' };
 
 test('B등급 — 한 번에 맞으면 한 번만 부른다', async () => {
   const { exec, stdins } = geminiExec([OK_CS]);
-  const r = await createGemini(exec).run(gJob, CHANGESET_SCHEMA);
+  const r = await createGemini(exec).run({ ...gJob, validate: validateChangeSet }, CHANGESET_SCHEMA);
   assert.equal(r.ok, true, r.error);
   assert.equal(stdins.length, 1);
   assert.ok(stdins[0]!.includes('원본 내용'));
@@ -461,7 +470,7 @@ test('B등급 — 한 번에 맞으면 한 번만 부른다', async () => {
 
 test('B등급 — 틀리면 사유를 붙여 한 번 다시 묻는다', async () => {
   const { exec, stdins } = geminiExec(['그냥 말', OK_CS]);
-  const r = await createGemini(exec).run(gJob, CHANGESET_SCHEMA);
+  const r = await createGemini(exec).run({ ...gJob, validate: validateChangeSet }, CHANGESET_SCHEMA);
   assert.equal(r.ok, true, r.error);
   assert.equal(stdins.length, 2);
   assert.match(stdins[1]!, /앞선 응답이 거부됐다/);
@@ -470,7 +479,7 @@ test('B등급 — 틀리면 사유를 붙여 한 번 다시 묻는다', async ()
 
 test('B등급 — 재요청은 1회 고정이다. 조용히 더 돌지 않는다', async () => {
   const { exec, stdins } = geminiExec(['그냥 말']);
-  const r = await createGemini(exec).run(gJob, CHANGESET_SCHEMA);
+  const r = await createGemini(exec).run({ ...gJob, validate: validateChangeSet }, CHANGESET_SCHEMA);
   assert.equal(r.ok, false);
   assert.equal(stdins.length, 2, '재요청이 1회를 넘었습니다');
   assert.match(r.error ?? '', /두 번 다 틀렸습니다/);
@@ -478,20 +487,20 @@ test('B등급 — 재요청은 1회 고정이다. 조용히 더 돌지 않는다
 
 test('B등급 — 결과가 gemini 로 스탬프된다', async () => {
   const { exec } = geminiExec([OK_CS]);
-  const r = await createGemini(exec).run(gJob, CHANGESET_SCHEMA);
+  const r = await createGemini(exec).run({ ...gJob, validate: validateChangeSet }, CHANGESET_SCHEMA);
   assert.match((r.data as ChangeSet).ops[0]!.content!, /generated_by: gemini/);
 });
 
 test('B등급 — 출력이 없으면 실패다. 재요청하지 않는다', async () => {
   const { exec, stdins } = geminiExec(['']);
-  const r = await createGemini(exec).run(gJob, CHANGESET_SCHEMA);
+  const r = await createGemini(exec).run({ ...gJob, validate: validateChangeSet }, CHANGESET_SCHEMA);
   assert.equal(r.ok, false);
   assert.equal(stdins.length, 1);
 });
 
 test('B등급 — 비용을 보고하지 않는다. 지출 계량기가 Gemini 를 못 센다', async () => {
   const { exec } = geminiExec([OK_CS]);
-  const r = await createGemini(exec).run(gJob, CHANGESET_SCHEMA);
+  const r = await createGemini(exec).run({ ...gJob, validate: validateChangeSet }, CHANGESET_SCHEMA);
   assert.deepEqual(r.usage, ZERO_USAGE);
   assert.equal(r.sessionId, null); // 세션 재개 경로가 없다
 });
@@ -530,19 +539,19 @@ test('라우팅 — 기본 정책. lint.judgment 는 실측으로 Gemini 에서 
     'ingest.batch': ['gemini', false],
     'dedup.ambiguous': ['gemini', false],
     'ingest.single': ['claude-code', true],
-    // 읽기 경로 셋. Gemini 가 내장 MCP 서버에 못 붙는다 (폴더 신뢰 게이트, 2026-09-05 실측)
-    'lint.judgment': ['claude-code', false],
+    // 전수 스캔이라 밀어 넣어도 결과가 같다. 상한이 느슨한 쪽으로 되돌렸다
+    'lint.judgment': ['gemini', false],
     query: ['claude-code', true],
     synthesis: ['claude-code', true],
     'schema.propose': ['claude-code', false],
   });
 });
 
-test('라우팅 — 밀어 넣기로 되는 작업만 Gemini 로 간다', () => {
-  for (const k of ['ingest.batch', 'dedup.ambiguous'] as TaskKind[]) {
+test('라우팅 — 밀어 넣기로 되는 작업은 Gemini 로 간다', () => {
+  for (const k of ['ingest.batch', 'dedup.ambiguous', 'lint.judgment'] as TaskKind[]) {
     const r = route(k, both);
     assert.equal(r.ok && r.provider, 'gemini', k);
-    assert.equal(DEFAULT_ROUTING[k].requiresMcp, false, k);
+    assert.notEqual(DEFAULT_ROUTING[k].wikiAccess, 'pull', k);
   }
 });
 
@@ -562,7 +571,8 @@ test('라우팅 — 상한에 닿으면 허용된 작업만 전환한다', () =>
 test('읽기 경로는 MCP 를 못 쓰는 공급자로 폴백하지 않는다', () => {
   // 폴백하면 위키를 안 읽고 아는 대로 답한다. 막히는 편이 낫다.
   assert.ok(!MCP_CAPABLE.includes('gemini'));
-  for (const k of ['query', 'synthesis', 'lint.judgment'] as TaskKind[]) {
+  for (const k of ['query', 'synthesis'] as TaskKind[]) {
+    assert.equal(DEFAULT_ROUTING[k].wikiAccess, 'pull', k);
     assert.equal(route(k, { ...both, overLimit: ['claude-code'] }).ok, false, k);
   }
 });

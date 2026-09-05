@@ -105,3 +105,46 @@ test('버린 지적이 있으면 같이 알린다 — 사람이 모델을 못 �
   assert.equal(summarizeJudgment(parseJudgment({ findings: [] }, KNOWN)), '지적 없음');
   assert.equal(summarizeJudgment(parseJudgment({ findings: [finding({ check: 99 })] }, KNOWN)), '지적 없음 (버린 지적 1건)');
 });
+
+/* ---------------- 밀어 넣기 판본 (ROADMAP 22번) ---------------- */
+
+import { PUSH_CHAR_CAP, judgmentPromptPush, pushSize } from '../src/core/lint/judgment.ts';
+
+test('밀어 넣기 — 본문이 프롬프트에 들어간다', () => {
+  const r = judgmentPromptPush(ENTRIES);
+  assert.ok('prompt' in r);
+  assert.ok(r.prompt.includes('아주 긴 본문'), 'MCP 가 없으니 본문을 직접 넣어야 한다');
+  assert.ok(r.prompt.includes('wiki/entities/acme.md'));
+});
+
+test('밀어 넣기 — 검사 항목과 규칙은 당겨 가기와 같은 문장이다', () => {
+  // 팔이 갈리면 두 방식의 결과를 비교할 수 없다
+  const push = (judgmentPromptPush(ENTRIES) as { prompt: string }).prompt;
+  const pull = judgmentPrompt(ENTRIES);
+  for (const id of JUDGMENT_IDS) assert.ok(push.includes(JUDGMENT_NAMES[id]), String(id));
+  assert.ok(push.includes(pull.slice(pull.indexOf('## 규칙'))), '규칙 절이 다릅니다');
+  assert.ok(push.startsWith(pull.slice(0, pull.indexOf('## 위키 페이지'))), '머리말이 다릅니다');
+});
+
+test('밀어 넣기 — 도구를 안 쓰므로 도구 설명은 빠진다', () => {
+  const push = (judgmentPromptPush(ENTRIES) as { prompt: string }).prompt;
+  assert.equal(push.includes('get_page'), false);
+  assert.ok(judgmentPrompt(ENTRIES).includes('get_page'));
+});
+
+test('밀어 넣기 — 너무 크면 거절하고 이유를 말한다', () => {
+  const big = Array.from({ length: 40 }, (_, i) => {
+    const e = entry(`big${i}`, `큰${i}`);
+    return { ...e, page: { ...e.page, body: '가'.repeat(20_000) } };
+  });
+  assert.ok(pushSize(big) > PUSH_CHAR_CAP);
+  const r = judgmentPromptPush(big);
+  assert.ok('error' in r);
+  assert.match(r.error, /너무 큽니다/);
+  assert.match(r.error, /MCP/);
+});
+
+test('밀어 넣기 크기는 본문과 요약을 센다', () => {
+  assert.ok(pushSize(ENTRIES) > 0);
+  assert.ok(pushSize([]) === 0);
+});
