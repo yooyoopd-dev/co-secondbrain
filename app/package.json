@@ -10,9 +10,12 @@
     "test": "node --no-warnings --experimental-strip-types --test test/*.test.ts",
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "vite build",
-    "build": "npm run build:main && npm run build:renderer",
+    "build": "npm run build:main && npm run build:preload && npm run build:renderer",
     "dev": "vite",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "build:preload": "esbuild src/main/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/main/preload.cjs",
+    "start": "electron .",
+    "smoke": "xvfb-run -a node ../spikes/app/smoke.mjs"
   },
   "dependencies": {
     "@kenjiuno/msgreader": "^1.24.0",
@@ -32,7 +35,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.0.0",
-    "electron": "^33.0.0",
+    "electron": "^38.8.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "^5.7.0",
