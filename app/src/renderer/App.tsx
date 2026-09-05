@@ -7,6 +7,10 @@ import type { VaultConfig } from '../core/vault.ts';
 import type { Review } from '../core/review.ts';
 import type { Status } from '../core/spend.ts';
 import type { Answer } from '../core/query.ts';
+import type { JudgmentFinding, ParsedJudgment } from '../core/lint/judgment.ts';
+import { JUDGMENT_NAMES } from '../core/lint/judgment.ts';
+import type { ScanEstimate } from '../core/tokens.ts';
+import { summarizeScan } from '../core/tokens.ts';
 import { summarize } from '../core/spend.ts';
 import ReviewOverlay from './Review.tsx';
 
@@ -33,6 +37,9 @@ export default function App() {
   const [pending, setPending] = useState<number | null>(null);
   // 답변도 디스크에 바로 안 쓴다. 보관을 눌러야 검토 화면으로 간다.
   const [answer, setAnswer] = useState<{ question: string; answer: Answer } | null>(null);
+  // 전수 검사는 돈이 든다. 예상 비용을 보여주고 확인받은 뒤에 돈다 (M2-PLAN.md §3.3)
+  const [estimate, setEstimate] = useState<ScanEstimate | null>(null);
+  const [judgment, setJudgment] = useState<ParsedJudgment | null>(null);
 
   useEffect(() => {
     void window.sb.currentVault().then(setVault);
@@ -158,6 +165,34 @@ export default function App() {
     }
   };
 
+  const runJudgment = async () => {
+    setBusy(true);
+    setJudgment(null);
+    setEstimate(null);
+    try {
+      const r = await window.sb.lintJudgment();
+      if (r.ok) {
+        setJudgment(r.result);
+        setReviewNote(`판단 검사에 $${r.costUsd.toFixed(4)} 들었습니다`);
+      } else {
+        setReviewNote(r.error);
+      }
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const exportDeck = async () => {
+    setBusy(true);
+    try {
+      const p = await window.sb.exportDeck();
+      setReviewNote(p ? `슬라이드를 저장했습니다: ${p}` : null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const jump = async (sourceId: string, locator: string | null) => {
     const ext = await window.sb.readSource(sourceId);
     if (ext) setViewer({ ext, locator });
@@ -176,6 +211,8 @@ export default function App() {
         onSelect={(id) => jump(id, null)}
         spend={spend}
         pending={pending}
+        onLint={async () => setEstimate(await window.sb.estimateJudgment())}
+        onExport={exportDeck}
       />
       <Results
         query={query}
@@ -187,6 +224,10 @@ export default function App() {
         answer={answer}
         onAsk={ask}
         onArchive={archive}
+        estimate={estimate}
+        judgment={judgment}
+        onRunLint={runJudgment}
+        onCancelLint={() => setEstimate(null)}
       />
       <Viewer viewer={viewer} busy={busy} note={reviewNote} onPropose={propose} />
       {report && <ReportToast report={report} onClose={() => setReport(null)} />}
@@ -238,6 +279,8 @@ function Rail({
   onSelect,
   spend,
   pending,
+  onLint,
+  onExport,
 }: {
   vault: VaultConfig;
   sources: SourceSummary[];
@@ -247,6 +290,8 @@ function Rail({
   onSelect: (id: string) => void;
   spend: Status[];
   pending: number | null;
+  onLint: () => void;
+  onExport: () => void;
 }) {
   // 개인 금고와 CO 영역을 색·아이콘·접두로 구분한다 (DESIGN-SYSTEM.md)
   const isCo = vault.hub !== null;
@@ -262,6 +307,14 @@ function Rail({
           </button>
           <button disabled={busy} onClick={onOpen} title="다른 Vault 열기">
             …
+          </button>
+        </div>
+        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+          <button style={{ flex: 1 }} disabled={busy} onClick={onLint} title="LLM 판단 검사 4종">
+            판단 검사
+          </button>
+          <button style={{ flex: 1 }} disabled={busy} onClick={onExport} title="Marp 슬라이드로 내보내기">
+            슬라이드
           </button>
         </div>
       </div>
@@ -317,6 +370,10 @@ function Results({
   answer,
   onAsk,
   onArchive,
+  estimate,
+  judgment,
+  onRunLint,
+  onCancelLint,
 }: {
   query: string;
   setQuery: (q: string) => void;
@@ -327,6 +384,10 @@ function Results({
   answer: { question: string; answer: Answer } | null;
   onAsk: (q: string) => void;
   onArchive: () => void;
+  estimate: ScanEstimate | null;
+  judgment: ParsedJudgment | null;
+  onRunLint: () => void;
+  onCancelLint: () => void;
 }) {
   const len = [...query.trim()].length;
   const tooShort = len === 1;
@@ -362,6 +423,8 @@ function Results({
       </div>
 
       {answer && <AnswerCard entry={answer} busy={busy} onJump={onJump} onArchive={onArchive} />}
+      {estimate && <EstimateBar estimate={estimate} busy={busy} onRun={onRunLint} onCancel={onCancelLint} />}
+      {judgment && <JudgmentList result={judgment} />}
 
       <div style={S.resultBody}>
         {len >= 2 && hits.length === 0 && <div style={S.empty}>결과가 없습니다.</div>}
@@ -425,6 +488,67 @@ function AnswerCard({
       <button className="primary" style={{ marginTop: 10 }} disabled={busy} onClick={onArchive}>
         위키에 보관
       </button>
+    </section>
+  );
+}
+
+/* ---------- 판단 검사 ---------- */
+
+function EstimateBar({
+  estimate,
+  busy,
+  onRun,
+  onCancel,
+}: {
+  estimate: ScanEstimate;
+  busy: boolean;
+  onRun: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div style={S.estimate} className="enter">
+      <span>{summarizeScan(estimate)}</span>
+      <span style={{ flex: 1 }} />
+      <button disabled={busy} onClick={onCancel}>
+        취소
+      </button>
+      <button className="primary" disabled={busy} onClick={onRun}>
+        검사 실행
+      </button>
+    </div>
+  );
+}
+
+function JudgmentList({ result }: { result: ParsedJudgment }) {
+  if (result.findings.length === 0) {
+    return (
+      <div style={S.empty}>
+        판단 검사에서 지적이 없습니다.
+        {result.dropped > 0 && <div style={{ color: 'var(--warn)' }}>버린 지적 {result.dropped}건</div>}
+      </div>
+    );
+  }
+  return (
+    <section style={{ padding: 'var(--s)' }} className="enter">
+      {result.dropped > 0 && (
+        <div style={{ ...S.hintWarn, marginBottom: 6 }}>
+          없는 페이지를 가리켜 버린 지적 {result.dropped}건
+        </div>
+      )}
+      {result.findings.map((f: JudgmentFinding, i) => (
+        <div key={i} style={S.finding}>
+          <div style={S.findingHead}>{JUDGMENT_NAMES[f.check]}</div>
+          <div>{f.message}</div>
+          <div style={{ color: 'var(--fg-muted)', fontSize: '0.8125rem', marginTop: 4 }}>{f.fix}</div>
+          <div style={{ marginTop: 4 }}>
+            {f.pages.map((p) => (
+              <span key={p} style={S.path}>
+                {p}{' '}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
     </section>
   );
 }
@@ -567,6 +691,16 @@ const S = {
     fontFamily: 'var(--mono)', fontSize: '0.75rem', color: 'var(--info)',
     border: '1px solid var(--border)', padding: '1px 6px', background: 'transparent', whiteSpace: 'nowrap',
   },
+  estimate: {
+    display: 'flex', gap: 6, alignItems: 'center', margin: 'var(--s)', padding: 'var(--s)',
+    border: '1px solid var(--warn)', borderRadius: 'var(--r-card)', fontSize: '0.8125rem',
+  },
+  finding: {
+    border: '1px solid var(--border)', borderRadius: 'var(--r-card)', background: 'var(--bg-raised)',
+    padding: 'var(--s)', marginBottom: 6, fontSize: '0.875rem',
+  },
+  findingHead: { fontFamily: 'var(--mono)', fontSize: '0.75rem', color: 'var(--warn)', marginBottom: 4 },
+  path: { fontFamily: 'var(--mono)', fontSize: '0.75rem', color: 'var(--fg-faint)' },
   hitGroup: { marginBottom: 16 },
   hitGroupHead: { fontFamily: 'var(--mono)', fontSize: '0.75rem', color: 'var(--fg-muted)', marginBottom: 4 },
   hitRow: {

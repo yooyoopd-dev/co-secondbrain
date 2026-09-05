@@ -21,9 +21,12 @@ import { CHANGESET_SCHEMA } from '../core/agent/schema.ts';
 import { conventionFile, promptFor, type WikiRef } from '../core/agent/ingest.ts';
 import { ALLOWED_TOOLS, mcpConfig, type McpLaunch } from '../core/mcp/config.ts';
 import { ANSWER_SCHEMA, parseAnswer, questionPrompt, toChangeSet, type Answer } from '../core/query.ts';
+import { JUDGMENT_SCHEMA, judgmentPrompt, parseJudgment, summarizeJudgment, type ParsedJudgment } from '../core/lint/judgment.ts';
+import { toMarp } from '../core/marp.ts';
+import { estimateScan, type ScanEstimate } from '../core/tokens.ts';
 import { disposeWorkdir, prepareWorkdir } from '../core/agent/workdir.ts';
 import type { Extraction, Relation } from '../core/types.ts';
-import type { AskResult, IngestResult, ProposeResult, SourceSummary } from './ipc.ts';
+import type { AskResult, IngestResult, JudgmentResult, ProposeResult, SourceSummary } from './ipc.ts';
 
 export class Store {
   #vault: Vault | null = null;
@@ -284,6 +287,64 @@ export class Store {
     } finally {
       await disposeWorkdir(wd);
     }
+  }
+
+  /* ---------- Lint 판단 검사 4종 (PLAN.md §4) ---------- */
+
+  /** 실행 직전에 사람에게 보여줄 예상 비용. 전부 읽는다고 보고 넉넉하게 잡는다. */
+  async estimateJudgment(): Promise<ScanEstimate> {
+    const v = this.#require();
+    const { entries } = await readWikiPages(v);
+    return estimateScan(entries.map((e) => e.page.body.length + e.page.front.summary.length));
+  }
+
+  /**
+   * 계산 검사 7종과 달리 LLM 이 판단한다. **결과는 제안일 뿐 자동으로 고치지 않는다** —
+   * ChangeSet 을 만들지 않고 목록만 돌려준다.
+   */
+  async lintJudgment(provider?: ProviderId): Promise<JudgmentResult> {
+    const v = this.#require();
+    if (!this.#mcpLaunch) return { ok: false, error: '읽기 경로가 설정되지 않았습니다' };
+
+    const now = new Date().toISOString();
+    const overLimit = this.spendStatus(now).filter((s) => s.level === 'over').map((s) => s.provider);
+    const picked = provider
+      ? { ok: true as const, provider, fallback: false, why: '호출자 지정' }
+      : route('lint.judgment', { available: await this.available(), overLimit });
+    if (!picked.ok) return { ok: false, error: picked.reason };
+
+    const { entries } = await readWikiPages(v);
+    if (entries.length === 0) return { ok: false, error: '검사할 페이지가 없습니다' };
+
+    const cli = createCli(picked.provider);
+    const wd = await prepareWorkdir({ 'mcp.json': JSON.stringify(mcpConfig(this.#mcpLaunch(v.root)), null, 1) });
+    try {
+      const r = await cli.run(
+        {
+          workdir: wd.root,
+          prompt: judgmentPrompt(entries),
+          mcp: { configPath: safeJoin(wd.root, 'mcp.json'), allowedTools: ALLOWED_TOOLS },
+        },
+        JUDGMENT_SCHEMA,
+      );
+      this.#spend = addSpend(this.#spend, picked.provider, r.usage, now);
+      if (this.#spendFile) await writeSpend(this.#spendFile, this.#spend);
+      if (!r.ok) return { ok: false, error: r.error ?? '검사 결과를 받지 못했습니다' };
+
+      const parsed = parseJudgment(r.data, new Set(entries.map((e) => e.path)));
+      if (parsed.reason) return { ok: false, error: parsed.reason };
+      await appendLog(v, 'lint', summarizeJudgment(parsed));
+      return { ok: true, result: parsed, costUsd: r.usage.costUsd };
+    } finally {
+      await disposeWorkdir(wd);
+    }
+  }
+
+  /** Marp 덱. 파일로 저장하는 것은 main 이 한다 — core 는 문자열만 만든다. */
+  async exportDeck(title: string): Promise<string> {
+    const v = this.#require();
+    const { entries } = await readWikiPages(v);
+    return toMarp(entries, { title, subtitle: new Date().toISOString().slice(0, 10) });
   }
 
   /** 보관 버튼. 답변을 ChangeSet 으로 바꿔 검토 대기에 올린다. 아직 안 쓴다. */

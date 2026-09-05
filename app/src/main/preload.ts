@@ -16,4 +16,7 @@ contextBridge.exposeInMainWorld('sb', {
   plan: () => ipcRenderer.invoke(IPC.plan),
   ask: (q: string) => ipcRenderer.invoke(IPC.ask, q),
   archiveAnswer: (q: string, a: unknown) => ipcRenderer.invoke(IPC.archiveAnswer, q, a),
+  estimateJudgment: () => ipcRenderer.invoke(IPC.estimateJudgment),
+  lintJudgment: () => ipcRenderer.invoke(IPC.lintJudgment),
+  exportDeck: () => ipcRenderer.invoke(IPC.exportDeck),
 });

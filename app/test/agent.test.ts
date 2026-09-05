@@ -519,28 +519,30 @@ test('A등급 — 프롬프트가 argv 가 아니라 stdin 으로 간다 (Window
 
 /* ================= 공급자 라우팅 (ROADMAP 6번) ================= */
 
-import { DEFAULT_ROUTING, route, SCHEMA_ENFORCING, type TaskKind } from '../src/core/agent/router.ts';
+import { DEFAULT_ROUTING, MCP_CAPABLE, route, SCHEMA_ENFORCING, type TaskKind } from '../src/core/agent/router.ts';
 
 const ALL: TaskKind[] = ['ingest.batch', 'ingest.single', 'lint.judgment', 'dedup.ambiguous', 'query', 'synthesis', 'schema.propose'];
 const both = { available: ['claude-code', 'gemini'] as const };
 
-test('라우팅 — 기본 정책이 PROVIDER-ROUTING.md §3 표와 같다', () => {
+test('라우팅 — 기본 정책. lint.judgment 는 실측으로 Gemini 에서 옮겼다', () => {
   const got = Object.fromEntries(ALL.map((k) => [k, [DEFAULT_ROUTING[k].preferred, DEFAULT_ROUTING[k].allowFallback]]));
   assert.deepEqual(got, {
     'ingest.batch': ['gemini', false],
-    'lint.judgment': ['gemini', false],
     'dedup.ambiguous': ['gemini', false],
     'ingest.single': ['claude-code', true],
+    // 읽기 경로 셋. Gemini 가 내장 MCP 서버에 못 붙는다 (폴더 신뢰 게이트, 2026-09-05 실측)
+    'lint.judgment': ['claude-code', false],
     query: ['claude-code', true],
     synthesis: ['claude-code', true],
     'schema.propose': ['claude-code', false],
   });
 });
 
-test('라우팅 — 토큰을 많이 먹는 작업은 Gemini 로 간다', () => {
-  for (const k of ['ingest.batch', 'lint.judgment', 'dedup.ambiguous'] as TaskKind[]) {
+test('라우팅 — 밀어 넣기로 되는 작업만 Gemini 로 간다', () => {
+  for (const k of ['ingest.batch', 'dedup.ambiguous'] as TaskKind[]) {
     const r = route(k, both);
     assert.equal(r.ok && r.provider, 'gemini', k);
+    assert.equal(DEFAULT_ROUTING[k].requiresMcp, false, k);
   }
 });
 
@@ -552,10 +554,23 @@ test('라우팅 — 판단이 무거운 작업은 A등급으로 간다', () => {
 });
 
 test('라우팅 — 상한에 닿으면 허용된 작업만 전환한다', () => {
-  const ctx = { ...both, overLimit: ['claude-code'] as const };
-  const q = route('query', ctx);
-  assert.equal(q.ok && q.provider, 'gemini');
-  assert.equal(q.ok && q.fallback, true);
+  const r = route('ingest.single', { ...both, overLimit: ['claude-code'] });
+  assert.equal(r.ok && r.provider, 'gemini');
+  assert.equal(r.ok && r.fallback, true);
+});
+
+test('읽기 경로는 MCP 를 못 쓰는 공급자로 폴백하지 않는다', () => {
+  // 폴백하면 위키를 안 읽고 아는 대로 답한다. 막히는 편이 낫다.
+  assert.ok(!MCP_CAPABLE.includes('gemini'));
+  for (const k of ['query', 'synthesis', 'lint.judgment'] as TaskKind[]) {
+    assert.equal(route(k, { ...both, overLimit: ['claude-code'] }).ok, false, k);
+  }
+});
+
+test('설정으로도 읽기 경로를 Gemini 에 못 넣는다', () => {
+  const r = route('query', { ...both, overrides: { query: 'gemini' } });
+  assert.equal(r.ok, false);
+  assert.match(r.ok === false ? r.reason : '', /내장 MCP 서버/);
 });
 
 test('라우팅 — schema.propose 는 전환하지 않고 막는다. 스키마가 틀리면 이후 전부가 틀어진다', () => {

@@ -470,11 +470,19 @@ Warning: MCP servers are configured but disabled because this folder is untruste
 ```
 
 §7.1이 CLI를 **격리 임시 작업 디렉터리**에서 돌리므로 항상 이 게이트에 걸립니다.
-해결은 **`--skip-trust`** — 이 플래그로 게이트를 통과하는 것까지 확인했습니다.
-다만 인증이 없어 **연결까지는 미검증**입니다.
+
+> **W3a 실측 (2026-09-05, 인증 상태). `--skip-trust` 로는 MCP 가 살아나지 않습니다.**
+> 이 플래그는 대화형 확인만 건너뛸 뿐이고, 격리 디렉터리에 프로젝트 설정을 써도
+> `gemini mcp list` 가 `Disabled` 로 나옵니다. 신뢰 판정이 **사용자 수준 설정**에 있어
+> 고치려면 사내 PC 의 기존 설정을 건드려야 합니다. 그건 §7.2 가 `--mcp-config` 를 고른
+> 이유와 정면으로 충돌하므로 하지 않습니다.
+>
+> **결론: Gemini 는 읽기 경로(안 B)를 쓸 수 없습니다.** 밀어 넣기(안 A)로만 가능합니다.
+> 라우팅에서 읽기 경로 작업(`query` · `synthesis` · `lint.judgment`)은 MCP 에 붙을 수 있는
+> 공급자로만 갑니다. 상세는 [`M2-PLAN.md`](M2-PLAN.md) §12.2.
 
 훅·프로젝트 에이전트도 같은 게이트에 걸리므로, Gemini 어댑터는 모든 호출에
-`--skip-trust`를 붙입니다.
+`--skip-trust`를 붙입니다 — 쓰기 경로에서는 여전히 필요합니다.
 
 ### CLI별 현황
 
@@ -503,7 +511,7 @@ Warning: MCP servers are configured but disabled because this folder is untruste
 | 작업 | 기본 공급자 | 자동 폴백 | 근거 |
 |---|---|---|---|
 | `ingest.batch` 대량 백로그 | **Gemini** | — | 토큰 최대, 반복적 |
-| `lint.judgment` Lint LLM 4종 | **Gemini** | — | 전수 스캔. 결과는 사람이 검토 |
+| `lint.judgment` Lint LLM 4종 | ~~Gemini~~ **A등급** | **금지** | 읽기 경로다. Gemini 가 MCP 에 못 붙는다 (위 W3a 실측) |
 | `dedup.ambiguous` 중복 애매 구간 | **Gemini** | — | 후보 제시일 뿐, 병합은 사람 승인 |
 | `ingest.single` 감독 모드 | A등급 | 허용 | 사람이 옆에서 봄 |
 | `query` · `synthesis` | A등급 | 허용 | 답변 품질이 곧 신뢰 |

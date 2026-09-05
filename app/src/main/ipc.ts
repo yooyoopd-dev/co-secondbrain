@@ -6,6 +6,8 @@ import type { ApplyResult } from '../core/changeset.ts';
 import type { WorkPlan } from '../core/cache.ts';
 import type { Status } from '../core/spend.ts';
 import type { Answer } from '../core/query.ts';
+import type { ParsedJudgment } from '../core/lint/judgment.ts';
+import type { ScanEstimate } from '../core/tokens.ts';
 
 export interface IngestResult {
   ok: string[];
@@ -30,6 +32,10 @@ export type AskResult =
   | { ok: true; question: string; answer: Answer; costUsd: number }
   | { ok: false; error: string };
 
+export type JudgmentResult =
+  | { ok: true; result: ParsedJudgment; costUsd: number }
+  | { ok: false; error: string };
+
 /** preload 가 window.sb 로 노출하는 표면. 이 목록 밖의 것은 렌더러가 못 부른다. */
 export interface SbApi {
   pickVault(mode: 'open' | 'create'): Promise<VaultConfig | null>;
@@ -51,6 +57,12 @@ export interface SbApi {
   ask(question: string): Promise<AskResult>;
   /** 답변을 보관 대기로 올린다. 승인해야 synthesis 페이지가 된다 */
   archiveAnswer(question: string, answer: Answer): Promise<Review>;
+  /** 실행 전에 보여줄 예상 비용 */
+  estimateJudgment(): Promise<ScanEstimate>;
+  /** Lint 판단 검사 4종. 제안일 뿐 자동으로 고치지 않는다 */
+  lintJudgment(): Promise<JudgmentResult>;
+  /** Marp 덱을 파일로 저장한다. 저장한 경로를 돌려주고, 취소하면 null */
+  exportDeck(): Promise<string | null>;
 }
 
 export const IPC = {
@@ -67,4 +79,7 @@ export const IPC = {
   plan: 'sb:plan',
   ask: 'sb:ask',
   archiveAnswer: 'sb:archiveAnswer',
+  estimateJudgment: 'sb:estimateJudgment',
+  lintJudgment: 'sb:lintJudgment',
+  exportDeck: 'sb:exportDeck',
 } as const;

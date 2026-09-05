@@ -21,23 +21,41 @@ export interface RoutingRule {
   allowFallback: boolean;
   /** CLI 가 스키마를 강제해야 하는가. true 면 B등급으로 못 내려간다 */
   requiresSchema: boolean;
+  /**
+   * 내장 MCP 서버에 붙어야 하는가 (읽기 경로). true 면 붙지 못하는 공급자로 못 간다.
+   * 이걸 안 막으면 위키를 안 읽고 아는 대로 답하는 결과가 나온다.
+   */
+  requiresMcp: boolean;
   /** 화면에 한 줄로 보여줄 근거 */
   why: string;
 }
 
 export const DEFAULT_ROUTING: Record<TaskKind, RoutingRule> = {
-  'ingest.batch': { preferred: 'gemini', allowFallback: false, requiresSchema: false, why: '토큰 최대, 반복적. 애초에 여기로 보낸다' },
-  'lint.judgment': { preferred: 'gemini', allowFallback: false, requiresSchema: false, why: '전수 스캔. 결과는 어차피 사람이 검토한다' },
-  'dedup.ambiguous': { preferred: 'gemini', allowFallback: false, requiresSchema: false, why: '후보 제시일 뿐, 병합은 사람이 승인한다' },
-  'ingest.single': { preferred: 'claude-code', allowFallback: true, requiresSchema: false, why: '감독 모드. 사람이 옆에서 본다' },
-  query: { preferred: 'claude-code', allowFallback: true, requiresSchema: false, why: '답변 품질이 곧 신뢰다' },
-  synthesis: { preferred: 'claude-code', allowFallback: true, requiresSchema: false, why: '위키에 남는 산문이다' },
+  'ingest.batch': { preferred: 'gemini', allowFallback: false, requiresSchema: false, requiresMcp: false, why: '토큰 최대, 반복적. 애초에 여기로 보낸다' },
+  'dedup.ambiguous': { preferred: 'gemini', allowFallback: false, requiresSchema: false, requiresMcp: false, why: '후보 제시일 뿐, 병합은 사람이 승인한다' },
+  'ingest.single': { preferred: 'claude-code', allowFallback: true, requiresSchema: false, requiresMcp: false, why: '감독 모드. 사람이 옆에서 본다' },
+  // 읽기 경로 셋. 내장 MCP 서버로 위키를 당겨 가야 한다 (PLAN.md §7.2 안 B).
+  'lint.judgment': { preferred: 'claude-code', allowFallback: false, requiresSchema: false, requiresMcp: true, why: '전수 스캔. 위키를 읽어야 판단할 수 있다' },
+  query: { preferred: 'claude-code', allowFallback: true, requiresSchema: false, requiresMcp: true, why: '답변 품질이 곧 신뢰다' },
+  synthesis: { preferred: 'claude-code', allowFallback: true, requiresSchema: false, requiresMcp: true, why: '위키에 남는 산문이다' },
   // 스키마는 다른 모든 작업의 계약이라 여기서 품질이 떨어지면 손상이 전파된다.
-  'schema.propose': { preferred: 'claude-code', allowFallback: false, requiresSchema: true, why: '스키마가 틀리면 이후 전부가 틀어진다' },
+  'schema.propose': { preferred: 'claude-code', allowFallback: false, requiresSchema: true, requiresMcp: false, why: '스키마가 틀리면 이후 전부가 틀어진다' },
 };
 
 /** 스키마를 CLI 가 강제하는 공급자 (PLAN.md §7.1 A등급). */
 export const SCHEMA_ENFORCING: readonly ProviderId[] = ['claude-code', 'codex'];
+
+/**
+ * 내장 MCP 서버에 붙일 수 있는 공급자.
+ *
+ * **Gemini 는 못 붙는다 (2026-09-05 실측).** 격리 작업 디렉터리에 프로젝트 설정을 써도
+ * "folder is untrusted" 로 MCP 를 끈다. `--skip-trust` 는 대화형 확인만 건너뛸 뿐
+ * MCP 를 살리지 못하고, 신뢰 판정은 사용자 수준 설정에 있다. 그걸 고치려면 사내 PC 의
+ * 기존 설정을 건드려야 해서 안 한다 (PLAN.md §7.2 가 `--mcp-config` 를 고른 이유와 같다).
+ *
+ * Codex 는 아직 확인하지 못했다. 확인 전에는 넣지 않는다.
+ */
+export const MCP_CAPABLE: readonly ProviderId[] = ['claude-code'];
 
 export interface RouteContext {
   /** `detect()` 로 확인한 설치·인증된 공급자 */
@@ -67,6 +85,9 @@ export function route(kind: TaskKind, ctx: RouteContext, rules: Record<TaskKind,
     if (rule.requiresSchema && !SCHEMA_ENFORCING.includes(override)) {
       return { ok: false, reason: `${kind} 는 스키마를 강제하는 공급자여야 합니다` };
     }
+    if (rule.requiresMcp && !MCP_CAPABLE.includes(override)) {
+      return { ok: false, reason: `${kind} 는 내장 MCP 서버에 붙을 수 있는 공급자여야 합니다` };
+    }
     return { ok: true, provider: override, fallback: false, why: '사용자 설정' };
   }
 
@@ -82,7 +103,11 @@ export function route(kind: TaskKind, ctx: RouteContext, rules: Record<TaskKind,
     return { ok: false, reason: `${rule.preferred} 가 상한에 닿았고 ${kind} 는 자동 전환을 금지합니다` };
   }
   const alt = [...available].find(
-    (p) => p !== rule.preferred && !over.has(p) && (!rule.requiresSchema || SCHEMA_ENFORCING.includes(p)),
+    (p) =>
+      p !== rule.preferred &&
+      !over.has(p) &&
+      (!rule.requiresSchema || SCHEMA_ENFORCING.includes(p)) &&
+      (!rule.requiresMcp || MCP_CAPABLE.includes(p)),
   );
   if (!alt) return { ok: false, reason: '전환할 공급자가 없습니다' };
   return { ok: true, provider: alt, fallback: true, why: `${rule.preferred} 상한 도달로 전환` };

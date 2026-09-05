@@ -4,6 +4,7 @@
 // 그 밖의 것은 부를 수 없다. 그래서 여기서 sandbox 를 켜고 항해를 막는다 —
 // **이 앱이 브라우저가 되면 안 된다.** 사내 문서를 다루는 도구라 그게 곧 유출 경로다.
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { IPC } from './ipc.ts';
 import { Store } from './store.ts';
@@ -103,6 +104,22 @@ function registerIpc(): void {
   ipcMain.handle(IPC.plan, () => store.plan());
   ipcMain.handle(IPC.ask, (_e, q: string) => store.ask(q));
   ipcMain.handle(IPC.archiveAnswer, (_e, q: string, a: Answer) => store.archiveAnswer(q, a));
+  ipcMain.handle(IPC.estimateJudgment, () => store.estimateJudgment());
+  ipcMain.handle(IPC.lintJudgment, () => store.lintJudgment());
+
+  // 덱은 core 가 문자열로 만들고 파일로 쓰는 것은 여기서 한다.
+  ipcMain.handle(IPC.exportDeck, async () => {
+    const vault = store.vault;
+    if (!vault) return null;
+    const r = await dialog.showSaveDialog({
+      title: '슬라이드 내보내기',
+      defaultPath: `${vault.config.title}.md`,
+      filters: [{ name: 'Marp 마크다운', extensions: ['md'] }],
+    });
+    if (r.canceled || !r.filePath) return null;
+    await fs.writeFile(r.filePath, await store.exportDeck(vault.config.title), 'utf8');
+    return r.filePath;
+  });
 }
 
 /* ------------------------------------------------------------------ */
