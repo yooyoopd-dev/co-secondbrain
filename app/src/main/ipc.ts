@@ -9,6 +9,7 @@ import type { Answer } from '../core/query.ts';
 import type { ParsedJudgment } from '../core/lint/judgment.ts';
 import type { ScanEstimate } from '../core/tokens.ts';
 import type { SyncConflict, SyncReport } from '../core/sync/index.ts';
+import type { LogEntry } from '../core/log.ts';
 
 export interface IngestResult {
   ok: string[];
@@ -58,6 +59,12 @@ export type ResolveResult =
   | { ok: true; version: number; conflicts: SyncConflict[] }
   | { ok: false; error: string; conflicts?: SyncConflict[] };
 
+/** 오류 기록 한 벌. 배지에 쓸 오류 건수를 같이 준다 */
+export interface LogSnapshot {
+  entries: LogEntry[];
+  errors: number;
+}
+
 /** preload 가 window.sb 로 노출하는 표면. 이 목록 밖의 것은 렌더러가 못 부른다. */
 export interface SbApi {
   pickVault(mode: 'open' | 'create'): Promise<VaultConfig | null>;
@@ -98,6 +105,16 @@ export interface SbApi {
   conflicts(): Promise<SyncConflict[]>;
   /** 사람이 고른 병합 결과. 충돌 표시가 남아 있으면 거절당한다 */
   resolveConflict(pageId: string, merged: string): Promise<ResolveResult>;
+
+  /* 오류 기록 (core/log.ts) — 파일명과 토큰은 적재 시점에 이미 지워져 있다 */
+  logs(): Promise<LogSnapshot>;
+  /** 클립보드에 넣는다. 넣은 줄 수를 돌려준다 */
+  copyLogs(): Promise<number>;
+  /** 파일로 저장한다. 저장한 경로를 돌려주고, 취소하면 null */
+  saveLogs(): Promise<string | null>;
+  clearLogs(): Promise<void>;
+  /** 렌더러에서 난 오류를 main 의 버퍼로 넘긴다 */
+  reportError(scope: string, message: string, detail?: string): Promise<void>;
 }
 
 export const IPC = {
@@ -124,4 +141,9 @@ export const IPC = {
   syncNow: 'sb:syncNow',
   conflicts: 'sb:conflicts',
   resolveConflict: 'sb:resolveConflict',
+  logs: 'sb:logs',
+  copyLogs: 'sb:copyLogs',
+  saveLogs: 'sb:saveLogs',
+  clearLogs: 'sb:clearLogs',
+  reportError: 'sb:reportError',
 } as const;

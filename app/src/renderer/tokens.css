@@ -1,27 +1,56 @@
-/* docs/DESIGN-SYSTEM.md 의 토큰. 여기서 벗어난 색을 컴포넌트에 직접 쓰지 않는다. */
+/* docs/DESIGN-SYSTEM.md 의 토큰. 여기서 벗어난 색을 컴포넌트에 직접 쓰지 않는다.
+ *
+ * 출처: design/design.md "Lovable Cream Humanist" (designmd.app). 명세가 서로 어긋나는
+ * 세 곳과 실측으로 고친 다섯 곳은 DESIGN-SYSTEM.md §1·§2 에 근거를 적었다. */
 :root {
-  --bg-canvas: #000000;      /* 창 바탕 */
-  --bg-surface: #0b0b0b;     /* 사이드바·패널 */
-  --bg-raised: #141414;      /* 카드·입력 */
-  --border: #262626;
-  --border-strong: #3a3a3a;
-  --fg: #ffffff;
-  --fg-muted: #a1a1a1;
-  --fg-faint: #6b6b6b;
-  --accent: #ffffff;
+  /* 표면 — 위로 올라올수록 밝아진다 */
+  --bg-canvas: #f7f4ed;      /* 창 바탕 (Creme) */
+  --bg-surface: #fcfbf8;     /* 사이드바·패널 (Off-White) */
+  --bg-raised: #ffffff;      /* 카드·입력 */
+  --tint: rgba(28, 28, 28, 0.04);  /* 호버 채움 */
 
-  --ok: #3fb950;
-  --warn: #d29922;
-  --danger: #f85149;
-  --info: #58a6ff;
+  --border: #eceae4;               /* Borda Creme */
+  --border-strong: rgba(28, 28, 28, 0.55);  /* 아웃라인 버튼. 3.74:1 */
 
-  /* 한글 폴백이 필수다 — Inter 는 한글 글리프를 포함하지 않는다 */
-  --font: Inter, 'Segoe UI Variable', 'Malgun Gothic', system-ui, sans-serif;
-  --mono: 'JetBrains Mono', 'D2Coding', ui-monospace, monospace;
+  /* 회색은 전부 #1c1c1c 의 투명도다 (명세 Elevation & Depth) */
+  --fg: #1c1c1c;             /* 15.51:1 */
+  --fg-muted: #5f5f5d;       /* 5.83:1 */
+  --fg-faint: rgba(28, 28, 28, 0.62);  /* 4.64:1 */
 
-  --r-input: 6px;
-  --r-card: 8px;
+  --accent: #1d4ed8;         /* 기본 버튼 채움·인용 링크. 흰 글자 6.70:1 */
+  --accent-hover: #1a45bd;
+  --ring: #3b82f6;           /* 명세의 Ring Blue. 포커스 링 전용 (3.35:1) */
+
+  --ok: #1a7f37;             /* 4.62:1 */
+  --warn: #946014;           /* 4.85:1 */
+  --danger: #cf222e;         /* 4.88:1 */
+  --info: var(--accent);
+
+  /* 줄 단위 diff 배경. 색만으로 구분하지 않고 왼쪽 막대를 같이 쓴다 */
+  --ok-wash: #eaf5ec;
+  --danger-wash: #fbeceb;
+  --info-wash: #eaf0fd;
+
+  /* 폰트 파일을 번들하지 않는다. Windows 11 의 Segoe UI Variable 이 명세가 말하는
+   * 휴머니스트 가변 폰트고, 한글은 Malgun Gothic 이 받는다. */
+  --font: 'Segoe UI Variable Text', 'Segoe UI', system-ui, 'Malgun Gothic',
+    'Apple SD Gothic Neo', sans-serif;
+  --mono: 'JetBrains Mono', 'Cascadia Mono', 'D2Coding', ui-monospace, monospace;
+
+  --r-input: 6px;            /* rounded.sm */
+  --r-card: 12px;            /* rounded.md */
+  --r-modal: 18px;           /* rounded.lg */
+  --r-pill: 9999px;          /* 버튼·칩·아이콘 */
   --s: 8px;                  /* 기본 간격 단위 */
+
+  --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.06);
+  --shadow-pop: 0 8px 28px rgba(28, 28, 28, 0.12);
+  /* 버튼 안쪽 그림자 (명세 Elevation & Depth) */
+  --inset-btn: rgba(255, 255, 255, 0.2) 0 0.5px inset, rgba(0, 0, 0, 0.2) 0 0 0.5px inset;
+
+  /* 기본 CSS 이징은 약하다. emilkowalski/skills 의 커브를 쓴다 */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
 * { box-sizing: border-box; }
@@ -32,31 +61,52 @@ body {
   color: var(--fg);
   font-family: var(--font);
   font-size: 0.9375rem;
+  /* 가변 폰트에서 480. 정적 폰트에서는 CSS 폰트 매칭이 400 을 고른다 */
+  font-weight: 480;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
 
+/* 크림 바탕에서는 굵은 제목의 -6% 자간이 눌려 보인다. 큰 글자에만 -2% */
+h1, h2, h3 { letter-spacing: -0.02em; }
+
 button {
   font: inherit;
-  border-radius: var(--r-input);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: var(--r-pill);
   border: 1.5px solid var(--border-strong);
   background: transparent;
   color: var(--fg);
-  padding: 6px 12px;
+  padding: 6px 14px;
   cursor: pointer;
-  transition: background 200ms ease-out, border-color 200ms ease-out;
+  /* transition: all 을 쓰지 않는다. 바뀌는 속성만 적는다 */
+  transition:
+    background-color 200ms ease,
+    border-color 200ms ease,
+    color 200ms ease,
+    transform 160ms var(--ease-out);
 }
-button:hover { background: var(--bg-raised); }
-button:active { transform: translateY(-1px); }
+button:disabled { opacity: 0.45; cursor: default; }
+/* 터치 기기는 탭에 hover 가 붙는다. 마우스에서만 건다 */
+@media (hover: hover) and (pointer: fine) {
+  button:not(:disabled):hover { background: var(--tint); }
+  button.primary:not(:disabled):hover { background: var(--accent-hover); }
+}
+/* 눌림은 즉시 되돌아온다. 인터페이스가 듣고 있다는 신호다 */
+button:not(:disabled):active { transform: scale(0.97); }
 button.primary {
   background: var(--accent);
-  color: #000;
-  border-color: var(--accent);
+  color: #fff;
+  border-color: transparent;
   font-weight: 600;
+  box-shadow: var(--inset-btn);
 }
-button.primary:hover { background: #e6e6e6; }
 
-input[type='search'], input[type='text'] {
+input[type='search'], input[type='text'], input[type='password'], textarea {
   font: inherit;
   width: 100%;
   padding: 8px 12px;
@@ -64,9 +114,10 @@ input[type='search'], input[type='text'] {
   border: 1px solid var(--border);
   background: var(--bg-raised);
   color: var(--fg);
+  transition: border-color 200ms ease;
 }
-input:focus-visible {
-  outline: 2px solid var(--accent);
+input:focus-visible, textarea:focus-visible, button:focus-visible {
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
   border-color: transparent;
 }
@@ -74,12 +125,29 @@ input:focus-visible {
 /* 스피너 대신 스켈레톤 셔머 (DESIGN-SYSTEM.md) */
 @keyframes shimmer { to { background-position: 200% 0; } }
 .skeleton {
-  background: linear-gradient(90deg, var(--bg-raised) 25%, #1e1e1e 50%, var(--bg-raised) 75%);
+  background: linear-gradient(90deg, var(--border) 25%, var(--bg-raised) 50%, var(--border) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s linear infinite;
   border-radius: var(--r-input);
   height: 1em;
 }
 
-@keyframes enter { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
-.enter { animation: enter 420ms ease-out both; }
+/* 진입은 scale(0) 에서 시작하지 않는다. 아무것도 없던 데서 튀어나온 것처럼 보인다 */
+@keyframes enter { from { opacity: 0; transform: translateY(12px) scale(0.99); } to { opacity: 1; transform: none; } }
+.enter { animation: enter 300ms var(--ease-out) both; }
+
+/* 목록은 계단식으로 들어온다. 간격이 길면 오히려 느려 보인다 (30~80ms) */
+.stagger > * { animation: enter 300ms var(--ease-out) both; }
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 40ms; }
+.stagger > *:nth-child(3) { animation-delay: 80ms; }
+.stagger > *:nth-child(4) { animation-delay: 120ms; }
+.stagger > *:nth-child(n + 5) { animation-delay: 160ms; }
+
+/* 움직임 최소화는 애니메이션을 없애는 것이 아니라 이동을 없애는 것이다 */
+@media (prefers-reduced-motion: reduce) {
+  .enter, .stagger > * { animation: none; }
+  button:not(:disabled):active { transform: none; }
+  .skeleton { animation: none; }
+  * { transition-duration: 1ms !important; }
+}

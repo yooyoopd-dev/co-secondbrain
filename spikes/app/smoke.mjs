@@ -83,7 +83,7 @@ const cred = await app.evaluate(({ safeStorage }) => ({
 ok('safeStorage 를 물어도 앱이 죽지 않는다', typeof cred.available === 'boolean', cred);
 console.log(`      자격 증명 저장소: ${JSON.stringify(cred)}`);
 
-// 첫 화면에 420ms 진입 애니메이션이 있다. 끝나기 전에 찍으면 전부 흐리게 나온다.
+// 첫 화면에 300ms 진입 애니메이션이 있다. 끝나기 전에 찍으면 전부 흐리게 나온다.
 await win.waitForTimeout(700);
 
 // 3-pane 셸이 창을 넘치면 안 된다. 넘치면 스크롤바가 생겨 폭이 밀린다.
@@ -93,14 +93,35 @@ const overflow = await win.evaluate(() => ({
 }));
 ok('창을 넘치지 않는다', overflow.v <= 0 && overflow.h <= 0, overflow);
 
-// 기본 버튼은 흰 배경에 검은 글자다 (DESIGN-SYSTEM.md)
+// 기본 버튼은 accent 채움에 흰 글자다 (DESIGN-SYSTEM.md §3)
 const btn = await win.evaluate(() => {
   const el = document.querySelector('button.primary');
   if (!el) return null;
   const c = getComputedStyle(el);
-  return { bg: c.backgroundColor, fg: c.color };
+  return { bg: c.backgroundColor, fg: c.color, radius: c.borderRadius, body: getComputedStyle(document.body).backgroundColor };
 });
-ok('기본 버튼이 흰 배경에 검은 글자다', btn?.bg === 'rgb(255, 255, 255)' && btn?.fg === 'rgb(0, 0, 0)', btn);
+ok('기본 버튼이 accent 배경에 흰 글자다', btn?.bg === 'rgb(29, 78, 216)' && btn?.fg === 'rgb(255, 255, 255)', btn);
+ok('바탕이 크림이다', btn?.body === 'rgb(247, 244, 237)', btn?.body);
+ok('버튼이 알약 모양이다', btn?.radius === '9999px', btn?.radius);
+
+// 아이콘이 실제로 붙었는가. 경로가 어긋나면 창 아이콘도 같이 깨진다.
+const mark = await win.evaluate(() => {
+  const i = document.querySelector('img');
+  return i ? { src: i.getAttribute('src'), w: i.naturalWidth } : null;
+});
+ok('앱 아이콘이 그려진다', mark?.w > 0, mark);
+
+// 오류 기록 — 렌더러에서 난 것이 main 버퍼로 가고, 복사본에 파일 이름이 없어야 한다.
+// 이 두 줄이 무너지면 사내 문서 이름이 클립보드로 나간다.
+await win.evaluate(() => window.sb.reportError('smoke', 'C:\\docs\\킥오프 발표.pptx 를 열지 못했습니다'));
+const snap = await win.evaluate(() => window.sb.logs());
+ok('렌더러 오류가 main 버퍼로 간다', snap.errors >= 1, snap.errors);
+ok('버퍼에 파일 이름이 없다', !JSON.stringify(snap.entries).includes('킥오프'), snap.entries.at(-1));
+
+const copied = await win.evaluate(() => window.sb.copyLogs());
+const clip = await app.evaluate(({ clipboard }) => clipboard.readText());
+ok('복사본이 클립보드로 들어간다', copied >= 1 && clip.includes('co-secondbrain 오류 기록'), { copied, head: clip.slice(0, 48) });
+ok('복사본에도 파일 이름이 없다', !clip.includes('킥오프'), clip.slice(0, 200));
 
 await win.screenshot({ path: path.join(APP, '..', 'spikes', 'out', 'app.png') }).catch(() => {});
 await app.close();

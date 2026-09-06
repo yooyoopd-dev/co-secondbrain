@@ -96,9 +96,12 @@ IP 주소)가 팀원 사이를 중계합니다. CO-Hub는 SQLite와 블롭 저�
 | **CO-Hub 서버** — 동시 쓰기 무손실, 콘텐츠 주소 blob, 이벤트 커서 | 완료 |
 | **동기화 클라이언트** — 3-way 병합 · 오프라인 편집 · Contribute/Adopt | 완료 |
 | **허브 연결 · 병합 화면** — 토큰은 OS 자격 증명 저장소에, 충돌은 세 칸 화면에서 사람이 고른다 | 완료 (Windows `safeStorage` 실동작 확인) |
+| **디자인 시스템** — 크림 팔레트 · 알약 버튼 · 커스텀 이징 · 앱 아이콘 | 완료 |
+| **오류 기록** — 실패하면 사유를 통째로 복사한다. 파일명과 토큰은 지우고 담는다 | 완료 |
 | Codex 어댑터 · NSIS 패키징 | 사내 환경 필요 |
 
-자동 검사 381건이 통과합니다 (앱 359 · 허브 22). 세부 마일스톤은 [`docs/PLAN.md`](docs/PLAN.md) §12,
+자동 검사 401건이 통과합니다 (앱 379 · 허브 22). 앱을 실제로 띄워 보는 스모크가 16/16,
+대비·채도 검사가 19/19, 아이콘 자산 검사가 10/10 입니다. 세부 마일스톤은 [`docs/PLAN.md`](docs/PLAN.md) §12,
 남은 작업은 [`docs/ROADMAP.md`](docs/ROADMAP.md), 구현 중 나온 측정은
 [`docs/M1-NOTES.md`](docs/M1-NOTES.md)와 [`docs/M2-PLAN.md`](docs/M2-PLAN.md)를 보십시오.
 
@@ -114,7 +117,8 @@ IP 주소)가 팀원 사이를 중계합니다. CO-Hub는 SQLite와 블롭 저�
 | [docs/REFERENCE-llm-wiki.md](docs/REFERENCE-llm-wiki.md) | 기반이 된 Karpathy "LLM Wiki" 원문 정리 및 본 설계의 반영·변형 내역 |
 | [docs/REVIEW-graphify.md](docs/REVIEW-graphify.md) | 선행 사례 graphify 검토 — v0.3의 변경 근거 |
 | [docs/REVIEW-imnotai.md](docs/REVIEW-imnotai.md) | 한국어 출력 품질 — im-not-ai 검토, Lint #11 |
-| [design/design.md](design/design.md) | 원본 디자인 명세 (첨부 원본 보존) |
+| [design/design.md](design/design.md) | 원본 디자인 명세 — Lovable Cream Humanist (첨부 원본 보존) |
+| [design/archive/inter-typography.md](design/archive/inter-typography.md) | 이전 디자인 명세 — 다크 전용이던 시절 |
 
 ## 확정된 선택
 
@@ -190,6 +194,10 @@ Jaro-Winkler 임계는 0.92에서 0.96으로 올려야 합니다.
 에 평문 토큰이 남지 않았습니다. 실측값과 재현 방법은
 [`docs/M2-PLAN.md`](docs/M2-PLAN.md) §17.5에 있습니다.
 
+그 뒤 디자인 시스템을 갈아 끼우면서 스모크 검사가 아홉 개에서 열여섯 개로 늘었습니다.
+리눅스에서는 16/16이지만 **새 화면을 Windows에서 아직 못 봤습니다.** 늘어난 일곱 개는
+색과 폰트에 걸리는 것이고 이 컨테이너에는 Segoe UI Variable이 없습니다.
+
 ### 사내 PC에서 받아 와야 하는 것
 
 `node spikes/cli/record.mjs` 를 한 번 실행하면 됩니다. 의존성이 없어 Node 만 있으면 되고
@@ -218,3 +226,6 @@ Jaro-Winkler 임계는 0.92에서 0.96으로 올려야 합니다.
   `\` 가 `.cmd` 를 거치면 위험하다. 프롬프트는 stdin 으로 뺐지만 스키마는 못 뺌
 - **사내 정책** — 문서 폴더에 스크립트를 돌리는 것이 가능한지 확인 못 함
 - **NSIS 교차 빌드** — 가능 여부 확인 못 함
+- **새 화면의 Windows 렌더링** — 폰트가 달라 자간과 480 굵기가 어떻게 보이는지 확인 못 함
+- **앱 아이콘** — 첨부하신 PNG가 컨테이너에 오지 않아 같은 구성으로 다시 그렸습니다.
+  원본 파일을 주시면 어두운 배경을 지우고 그대로 갈아 끼웁니다

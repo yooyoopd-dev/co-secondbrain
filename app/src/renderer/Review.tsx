@@ -230,12 +230,13 @@ function DiffPair({ row }: { row: DiffRow }) {
 
 const S = {
   scrim: {
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)',
+    position: 'fixed', inset: 0, background: 'rgba(28,28,28,0.28)',
     display: 'grid', placeItems: 'center', padding: 24, zIndex: 10,
   },
   panel: {
     display: 'flex', flexDirection: 'column', width: 'min(1100px, 100%)', height: '100%',
-    background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-card)', overflow: 'hidden',
+    background: 'var(--bg-surface)', border: '1px solid var(--border)',
+    borderRadius: 'var(--r-modal)', boxShadow: 'var(--shadow-pop)', overflow: 'hidden',
   },
   head: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--s)',
@@ -248,25 +249,28 @@ const S = {
 
   discussion: {
     margin: '0 0 var(--s)', padding: 'var(--s)', borderLeft: '3px solid var(--info)',
-    background: 'var(--bg-raised)', color: 'var(--fg-muted)', fontSize: '0.875rem',
+    background: 'var(--info-wash)', color: 'var(--fg-muted)', fontSize: '0.875rem',
   },
   discussionLabel: { fontSize: '0.75rem', color: 'var(--fg-faint)', marginBottom: 4 },
 
-  card: { border: '1px solid var(--border)', borderRadius: 'var(--r-card)', background: 'var(--bg-raised)', padding: 'var(--s)', marginBottom: 'var(--s)' },
+  card: {
+    border: '1px solid var(--border)', borderRadius: 'var(--r-card)', background: 'var(--bg-raised)',
+    padding: 'var(--s)', marginBottom: 'var(--s)', boxShadow: 'var(--shadow-card)',
+  },
   cardHead: { display: 'grid', gridTemplateColumns: 'auto auto 1fr auto', gap: 'var(--s)', alignItems: 'baseline' },
-  opTag: { fontFamily: 'var(--mono)', fontSize: '0.6875rem', color: 'var(--fg-faint)', border: '1px solid var(--border-strong)', borderRadius: 4, padding: '1px 5px' },
+  opTag: { fontFamily: 'var(--mono)', fontSize: '0.6875rem', color: 'var(--fg-muted)', border: '1px solid var(--border)', borderRadius: 'var(--r-pill)', padding: '1px 8px' },
   cardTitle: { fontWeight: 600 },
   path: { fontFamily: 'var(--mono)', fontSize: '0.75rem', color: 'var(--fg-faint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   stat: { fontFamily: 'var(--mono)', fontSize: '0.75rem' },
 
-  danger: { marginTop: 6, padding: 6, borderRadius: 'var(--r-input)', border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: '0.8125rem' },
+  danger: { marginTop: 6, padding: '6px 10px', borderRadius: 'var(--r-input)', border: '1px solid var(--danger)', background: 'var(--danger-wash)', color: 'var(--danger)', fontSize: '0.8125rem' },
 
   claims: { listStyle: 'none', margin: '10px 0 0', padding: 0, fontSize: '0.875rem' },
   claim: { display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 4 },
-  badge: { fontFamily: 'var(--mono)', fontSize: '0.6875rem', border: '1px solid', borderRadius: 4, padding: '0 5px', whiteSpace: 'nowrap' },
+  badge: { fontFamily: 'var(--mono)', fontSize: '0.6875rem', border: '1px solid', borderRadius: 'var(--r-pill)', padding: '0 8px', whiteSpace: 'nowrap' },
 
   chips: { display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 },
-  chip: { fontFamily: 'var(--mono)', fontSize: '0.75rem', color: 'var(--info)', border: '1px solid var(--border)', padding: '1px 6px', background: 'transparent' },
+  chip: { fontFamily: 'var(--mono)', fontSize: '0.75rem', color: 'var(--info)', border: '1px solid var(--border)', padding: '1px 8px', background: 'var(--bg-canvas)' },
   chipBroken: { color: 'var(--danger)', borderColor: 'var(--danger)', textDecoration: 'line-through', cursor: 'not-allowed' },
 
   diff: {
@@ -274,17 +278,17 @@ const S = {
     fontFamily: 'var(--mono)', fontSize: '0.75rem', background: 'var(--border)',
     border: '1px solid var(--border)', borderRadius: 'var(--r-input)', overflow: 'hidden',
   },
-  diffHead: { background: 'var(--bg-surface)', color: 'var(--fg-faint)', padding: '3px 8px' },
-  line: { background: 'var(--bg-canvas)', padding: '1px 8px', borderLeft: '3px solid transparent', whiteSpace: 'pre-wrap', wordBreak: 'break-all', minHeight: '1.5em' },
-  add: { borderLeftColor: 'var(--ok)', background: '#0c1a0f' },
-  del: { borderLeftColor: 'var(--danger)', background: '#1c0f0f' },
+  diffHead: { background: 'var(--bg-canvas)', color: 'var(--fg-muted)', padding: '3px 8px' },
+  line: { background: 'var(--bg-raised)', padding: '1px 8px', borderLeft: '3px solid transparent', whiteSpace: 'pre-wrap', wordBreak: 'break-all', minHeight: '1.5em' },
+  add: { borderLeftColor: 'var(--ok)', background: 'var(--ok-wash)' },
+  del: { borderLeftColor: 'var(--danger)', background: 'var(--danger-wash)' },
 
   cardFoot: { marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--border)', display: 'flex', gap: 6, alignItems: 'center' },
   editor: {
     width: '100%', minHeight: 260, marginTop: 10, padding: 'var(--s)', resize: 'vertical',
     fontFamily: 'var(--mono)', fontSize: '0.75rem', lineHeight: 1.5,
-    background: 'var(--bg-canvas)', color: 'var(--fg)',
-    border: '1px solid var(--border-strong)', borderRadius: 'var(--r-input)',
+    background: 'var(--bg-raised)', color: 'var(--fg)',
+    border: '1px solid var(--border)', borderRadius: 'var(--r-input)',
   },
   check: { display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: '0.875rem', cursor: 'pointer' },
 } satisfies Record<string, React.CSSProperties>;

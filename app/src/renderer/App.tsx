@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Extraction, SearchHit } from '../core/types.ts';
 import type { SbApi, HubStatus, IngestResult, SourceSummary } from '../main/ipc.ts';
+import type { LogEntry } from '../core/log.ts';
 import type { SyncConflict, SyncReport } from '../core/sync/index.ts';
 import type { VaultConfig } from '../core/vault.ts';
 import type { Review } from '../core/review.ts';
@@ -15,6 +16,8 @@ import { summarizeScan } from '../core/tokens.ts';
 import { summarize } from '../core/spend.ts';
 import ReviewOverlay from './Review.tsx';
 import SyncPanel from './Sync.tsx';
+import DebugPanel from './Debug.tsx';
+import { Icon } from './icons.tsx';
 
 declare global {
   interface Window {
@@ -48,17 +51,40 @@ export default function App() {
   const [conflicts, setConflicts] = useState<SyncConflict[]>([]);
   const [syncReport, setSyncReport] = useState<SyncReport | null>(null);
   const [syncNote, setSyncNote] = useState<string | null>(null);
+  // 오류 기록. main 의 버퍼가 원본이고 화면은 사본을 그린다 (core/log.ts)
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [errors, setErrors] = useState(0);
+  const [debugOpen, setDebugOpen] = useState(false);
 
   useEffect(() => {
     void window.sb.currentVault().then(setVault);
   }, []);
+
+  const pullLogs = useCallback(async () => {
+    const s = await window.sb.logs();
+    setLogs(s.entries);
+    setErrors(s.errors);
+  }, []);
+
+  // 금고를 열기 전에 난 오류도 세어 둔다. 첫 화면에서 사유를 볼 수 있어야 한다.
+  useEffect(() => {
+    void pullLogs();
+  }, [pullLogs]);
 
   const refresh = useCallback(async () => {
     setSources(await window.sb.listSources());
     setSpend(await window.sb.spendStatus());
     setPending((await window.sb.plan()).fresh.length);
     setHub(await window.sb.hubStatus());
-  }, []);
+    await pullLogs();
+  }, [pullLogs]);
+
+  // 창을 안 건드려도 나는 오류가 있다. 패널이 열려 있는 동안만 다시 읽는다.
+  useEffect(() => {
+    if (!debugOpen) return;
+    const t = setInterval(() => void pullLogs(), 3000);
+    return () => clearInterval(t);
+  }, [debugOpen, pullLogs]);
 
   useEffect(() => {
     if (vault) void refresh();
@@ -279,7 +305,47 @@ export default function App() {
     if (ext) setViewer({ ext, locator });
   };
 
-  if (!vault) return <Welcome onPick={openVault} busy={busy} />;
+  /* 오류 기록 — 복사·저장은 main 이 한다. 렌더러는 클립보드에 직접 닿지 않는다 */
+
+  const debug = {
+    open: async () => {
+      await pullLogs();
+      setDebugOpen(true);
+    },
+    copy: async () => {
+      const n = await window.sb.copyLogs();
+      setReviewNote(`${n}줄을 클립보드에 넣었습니다`);
+    },
+    save: async () => {
+      const p = await window.sb.saveLogs();
+      if (p) setReviewNote('오류 기록을 저장했습니다');
+    },
+    clear: async () => {
+      await window.sb.clearLogs();
+      await pullLogs();
+    },
+  };
+
+  // 첫 화면에서도 열 수 있어야 한다. 금고를 못 여는 것 자체가 흔한 실패다.
+  const debugOverlay = debugOpen && (
+    <DebugPanel
+      entries={logs}
+      busy={busy}
+      onCopy={() => void debug.copy()}
+      onSave={() => void debug.save()}
+      onClear={() => void debug.clear()}
+      onClose={() => setDebugOpen(false)}
+    />
+  );
+
+  if (!vault) {
+    return (
+      <>
+        <Welcome onPick={openVault} busy={busy} errors={errors} onDebug={() => void debug.open()} />
+        {debugOverlay}
+      </>
+    );
+  }
 
   return (
     <div style={S.shell}>
@@ -296,6 +362,8 @@ export default function App() {
         onExport={exportDeck}
         hub={hub}
         onSync={openSync}
+        errors={errors}
+        onDebug={() => void debug.open()}
       />
       <Results
         query={query}
@@ -338,31 +406,64 @@ export default function App() {
           onEdit={(path, content) => void editOp(path, content)}
         />
       )}
+      {debugOverlay}
     </div>
   );
 }
 
 /* ---------- 첫 화면 ---------- */
 
-function Welcome({ onPick, busy }: { onPick: (m: 'open' | 'create') => void; busy: boolean }) {
+function Welcome({
+  onPick,
+  busy,
+  errors,
+  onDebug,
+}: {
+  onPick: (m: 'open' | 'create') => void;
+  busy: boolean;
+  errors: number;
+  onDebug: () => void;
+}) {
   return (
-    <div style={S.welcome} className="enter">
-      <div style={{ maxWidth: 460 }}>
+    <div style={S.welcome}>
+      <div style={{ maxWidth: 460 }} className="stagger">
+        <img src="./icon-256.png" width={72} height={72} alt="" style={S.mark} />
         <h1 style={S.h1}>co-secondbrain</h1>
         <p style={{ color: 'var(--fg-muted)', marginTop: 0 }}>
           프로젝트 문서를 넣으면 원문 위치까지 찾아 주는 개인 금고입니다.
           이 단계에서는 LLM 을 쓰지 않고 전부 로컬에서 처리합니다.
         </p>
-        <div style={{ display: 'flex', gap: 'var(--s)', marginTop: 24 }}>
+        <div style={{ display: 'flex', gap: 'var(--s)', marginTop: 24, alignItems: 'center' }}>
           <button className="primary" disabled={busy} onClick={() => onPick('create')}>
             새 Vault 만들기
           </button>
           <button disabled={busy} onClick={() => onPick('open')}>
             기존 Vault 열기
           </button>
+          <ErrorButton errors={errors} onClick={onDebug} />
         </div>
       </div>
     </div>
+  );
+}
+
+/** 오류가 없으면 눈에 띄지 않아야 한다. 상시 빨간 배지는 곧 무시된다. */
+function ErrorButton({ errors, onClick, style }: { errors: number; onClick: () => void; style?: React.CSSProperties }) {
+  const has = errors > 0;
+  return (
+    <button
+      onClick={onClick}
+      title="오류 기록을 열고 복사합니다"
+      style={{
+        fontSize: '0.8125rem',
+        padding: '4px 10px',
+        ...(has ? { borderColor: 'var(--danger)', color: 'var(--danger)' } : { borderColor: 'var(--border)', color: 'var(--fg-faint)' }),
+        ...style,
+      }}
+    >
+      <Icon name="alert" size={14} />
+      {has ? `오류 ${errors}` : '오류 기록'}
+    </button>
   );
 }
 
@@ -381,6 +482,8 @@ function Rail({
   onExport,
   hub,
   onSync,
+  errors,
+  onDebug,
 }: {
   vault: VaultConfig;
   sources: SourceSummary[];
@@ -394,6 +497,8 @@ function Rail({
   onExport: () => void;
   hub: HubStatus | null;
   onSync: () => void;
+  errors: number;
+  onDebug: () => void;
 }) {
   // 개인 금고와 CO 영역을 색·아이콘·접두로 구분한다 (DESIGN-SYSTEM.md)
   const isCo = vault.hub !== null;
@@ -401,11 +506,16 @@ function Rail({
     <aside style={{ ...S.rail, background: isCo ? 'var(--bg-surface)' : 'var(--bg-canvas)' }}>
       <div style={{ ...S.railHead, borderBottomColor: isCo ? 'var(--info)' : 'var(--border)' }}>
         <div style={S.vaultName}>
-          <span style={S.lock}>{isCo ? '[CO]' : '[개인]'}</span> {vault.title}
+          {/* 색 하나로 공간을 구분하지 않는다. 아이콘과 접두 텍스트를 같이 쓴다 */}
+          <span style={S.lock} title={isCo ? 'CO 공간' : '개인 금고'}>
+            <Icon name={isCo ? 'users' : 'lock'} size={14} />
+            {isCo ? 'CO' : '개인'}
+          </span>
+          {vault.title}
         </div>
         <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
           <button className="primary" style={{ flex: 1 }} disabled={busy} onClick={onIngest}>
-            문서 추가
+            <Icon name="plus" /> 문서 추가
           </button>
           <button disabled={busy} onClick={onOpen} title="다른 Vault 열기">
             …
@@ -467,6 +577,7 @@ function Rail({
             {summarize(s)}
           </div>
         ))}
+        <ErrorButton errors={errors} onClick={onDebug} style={{ marginTop: 6, width: '100%' }} />
       </div>
     </aside>
   );
@@ -548,7 +659,7 @@ function Results({
       {estimate && <EstimateBar estimate={estimate} busy={busy} onRun={onRunLint} onCancel={onCancelLint} />}
       {judgment && <JudgmentList result={judgment} />}
 
-      <div style={S.resultBody}>
+      <div style={S.resultBody} className="stagger">
         {len >= 2 && hits.length === 0 && <div style={S.empty}>결과가 없습니다.</div>}
         {len < 2 && !tooShort && (
           <div style={S.empty}>
@@ -558,7 +669,7 @@ function Results({
           </div>
         )}
         {grouped.map(([sourceId, list]) => (
-          <section key={sourceId} className="enter" style={S.hitGroup}>
+          <section key={sourceId} style={S.hitGroup}>
             <div style={S.hitGroupHead}>{sourceId}</div>
             {list.map((h, i) => (
               <button key={`${h.locator}-${i}`} style={S.hitRow} onClick={() => onJump(h.sourceId, h.locator)}>
@@ -737,7 +848,7 @@ function Viewer({
               style={{
                 ...S.chunk,
                 borderColor: active ? 'var(--info)' : 'var(--border)',
-                background: active ? '#0d1520' : 'var(--bg-raised)',
+                background: active ? 'var(--info-wash)' : 'var(--bg-raised)',
               }}
             >
               <div style={S.chunkAnchor}>{c.anchor.label}</div>
@@ -781,17 +892,23 @@ function ReportToast({ report, onClose }: { report: IngestResult; onClose: () =>
 const S = {
   shell: { display: 'grid', gridTemplateColumns: '280px 1fr 420px', height: '100dvh' },
   welcome: { display: 'grid', placeItems: 'center', height: '100dvh', padding: 24 },
-  h1: { fontSize: '1.5rem', fontWeight: 700, letterSpacing: '-0.06em', margin: '0 0 8px' },
+  h1: { fontSize: '1.5rem', fontWeight: 700, letterSpacing: '-0.02em', margin: '0 0 8px' },
+  mark: { display: 'block', marginBottom: 14, borderRadius: 'var(--r-card)' },
 
   rail: { borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
   railHead: { padding: 'var(--s)', borderBottom: '1px solid var(--border)' },
   vaultName: { fontWeight: 600, fontSize: '0.9375rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  lock: { fontFamily: 'var(--mono)', fontSize: '0.75rem', color: 'var(--fg-muted)' },
+  lock: {
+    display: 'inline-flex', alignItems: 'center', gap: 4, verticalAlign: '-2px', marginRight: 6,
+    fontFamily: 'var(--mono)', fontSize: '0.6875rem', color: 'var(--fg-muted)',
+    border: '1px solid var(--border)', borderRadius: 'var(--r-pill)', padding: '1px 8px 1px 6px',
+  },
   railBody: { overflowY: 'auto', flex: 1 },
   sectionLabel: { padding: '10px var(--s) 4px', fontSize: '0.8125rem', color: 'var(--fg-muted)', fontWeight: 500 },
   sourceRow: {
     display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 6, alignItems: 'center',
-    width: '100%', textAlign: 'left', border: 'none', borderRadius: 0, padding: '6px var(--s)', background: 'transparent',
+    width: '100%', textAlign: 'left', border: 'none', borderRadius: 'var(--r-input)',
+    padding: '6px var(--s)', background: 'transparent',
   },
   kindTag: { fontFamily: 'var(--mono)', fontSize: '0.6875rem', color: 'var(--fg-faint)', width: 34 },
   sourceName: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.875rem' },
@@ -804,14 +921,14 @@ const S = {
   resultBody: { overflowY: 'auto', flex: 1, padding: 'var(--s)' },
   answer: {
     margin: 'var(--s)', padding: 'var(--s)', background: 'var(--bg-raised)',
-    border: '1px solid var(--border)', borderRadius: 'var(--r-card)',
+    border: '1px solid var(--border)', borderRadius: 'var(--r-card)', boxShadow: 'var(--shadow-card)',
   },
   answerQ: { fontWeight: 600, fontSize: '0.875rem', color: 'var(--fg-muted)' },
   claims: { listStyle: 'none', margin: '10px 0 0', padding: 0, fontSize: '0.875rem' },
   claim: { display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 4 },
   chip: {
     fontFamily: 'var(--mono)', fontSize: '0.75rem', color: 'var(--info)',
-    border: '1px solid var(--border)', padding: '1px 6px', background: 'transparent', whiteSpace: 'nowrap',
+    border: '1px solid var(--border)', padding: '1px 8px', background: 'var(--bg-raised)', whiteSpace: 'nowrap',
   },
   estimate: {
     display: 'flex', gap: 6, alignItems: 'center', margin: 'var(--s)', padding: 'var(--s)',
@@ -819,7 +936,7 @@ const S = {
   },
   finding: {
     border: '1px solid var(--border)', borderRadius: 'var(--r-card)', background: 'var(--bg-raised)',
-    padding: 'var(--s)', marginBottom: 6, fontSize: '0.875rem',
+    padding: 'var(--s)', marginBottom: 6, fontSize: '0.875rem', boxShadow: 'var(--shadow-card)',
   },
   findingHead: { fontFamily: 'var(--mono)', fontSize: '0.75rem', color: 'var(--warn)', marginBottom: 4 },
   path: { fontFamily: 'var(--mono)', fontSize: '0.75rem', color: 'var(--fg-faint)' },
@@ -827,7 +944,8 @@ const S = {
   hitGroupHead: { fontFamily: 'var(--mono)', fontSize: '0.75rem', color: 'var(--fg-muted)', marginBottom: 4 },
   hitRow: {
     display: 'block', width: '100%', textAlign: 'left', background: 'var(--bg-raised)',
-    border: '1px solid var(--border)', borderRadius: 'var(--r-card)', padding: 'var(--s)', marginBottom: 6,
+    border: '1px solid var(--border)', borderRadius: 'var(--r-card)', padding: 'var(--s)',
+    marginBottom: 6, boxShadow: 'var(--shadow-card)',
   },
   anchorChip: {
     display: 'inline-block', fontFamily: 'var(--mono)', fontSize: '0.75rem', color: 'var(--info)',
@@ -840,7 +958,7 @@ const S = {
   viewerMeta: { fontSize: '0.8125rem', color: 'var(--fg-muted)' },
   viewerNote: { marginTop: 8, fontSize: '0.8125rem', color: 'var(--fg-muted)' },
   warnBox: {
-    marginTop: 6, padding: 6, borderRadius: 'var(--r-input)',
+    marginTop: 6, padding: '6px 10px', borderRadius: 'var(--r-input)',
     border: '1px solid var(--warn)', color: 'var(--warn)', fontSize: '0.8125rem',
   },
   chunk: { border: '1px solid var(--border)', borderRadius: 'var(--r-card)', padding: 'var(--s)', marginBottom: 6, transition: 'background 200ms ease-out' },
@@ -850,6 +968,6 @@ const S = {
   toast: {
     position: 'fixed', right: 16, bottom: 16, maxWidth: 420,
     background: 'var(--bg-raised)', border: '1px solid var(--border)',
-    borderRadius: 'var(--r-card)', padding: 12, boxShadow: '0 2px 12px rgba(0,0,0,0.6)',
+    borderRadius: 'var(--r-card)', padding: 12, boxShadow: 'var(--shadow-pop)',
   },
 } satisfies Record<string, React.CSSProperties>;

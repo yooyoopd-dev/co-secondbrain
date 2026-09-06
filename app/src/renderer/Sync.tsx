@@ -261,12 +261,13 @@ function Pane({ label, text }: { label: string; text: string }) {
 
 const S = {
   scrim: {
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)',
+    position: 'fixed', inset: 0, background: 'rgba(28,28,28,0.28)',
     display: 'grid', placeItems: 'center', padding: 24, zIndex: 10,
   },
   panel: {
     display: 'flex', flexDirection: 'column', width: 'min(1100px, 100%)', height: '100%',
-    background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-card)', overflow: 'hidden',
+    background: 'var(--bg-surface)', border: '1px solid var(--border)',
+    borderRadius: 'var(--r-modal)', boxShadow: 'var(--shadow-pop)', overflow: 'hidden',
   },
   head: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--s)',
@@ -279,7 +280,7 @@ const S = {
 
   card: {
     border: '1px solid var(--border)', borderRadius: 'var(--r-card)', background: 'var(--bg-raised)',
-    padding: 'var(--s)', marginBottom: 'var(--s)',
+    padding: 'var(--s)', marginBottom: 'var(--s)', boxShadow: 'var(--shadow-card)',
   },
   cardHead: { display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 'var(--s)', alignItems: 'baseline' },
   cardTitle: { fontWeight: 600 },
@@ -290,7 +291,7 @@ const S = {
   fieldLabel: { display: 'block', fontSize: '0.8125rem', color: 'var(--fg-muted)', marginBottom: 4 },
 
   warnBox: {
-    marginTop: 6, padding: 6, borderRadius: 'var(--r-input)',
+    marginTop: 6, padding: '6px 10px', borderRadius: 'var(--r-input)',
     border: '1px solid var(--warn)', color: 'var(--warn)', fontSize: '0.8125rem',
   },
   warnTag: { fontFamily: 'var(--mono)', fontSize: '0.75rem', color: 'var(--warn)' },
@@ -299,14 +300,14 @@ const S = {
 
   tabs: { display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 'var(--s)' },
   tab: { fontFamily: 'var(--mono)', fontSize: '0.75rem', padding: '2px 8px' },
-  tabOn: { fontFamily: 'var(--mono)', fontSize: '0.75rem', padding: '2px 8px', borderColor: 'var(--info)', color: 'var(--info)' },
+  tabOn: { fontFamily: 'var(--mono)', fontSize: '0.75rem', padding: '2px 8px', borderColor: 'var(--info)', color: 'var(--info)', background: 'var(--info-wash)' },
 
   panes: {
     display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1, marginTop: 10,
     background: 'var(--border)', border: '1px solid var(--border)', borderRadius: 'var(--r-input)', overflow: 'hidden',
   },
-  pane: { background: 'var(--bg-canvas)', display: 'flex', flexDirection: 'column', minWidth: 0 },
-  paneHead: { background: 'var(--bg-surface)', color: 'var(--fg-faint)', fontSize: '0.75rem', padding: '3px 8px' },
+  pane: { background: 'var(--bg-raised)', display: 'flex', flexDirection: 'column', minWidth: 0 },
+  paneHead: { background: 'var(--bg-canvas)', color: 'var(--fg-muted)', fontSize: '0.75rem', padding: '3px 8px' },
   paneBody: {
     margin: 0, padding: '4px 8px', maxHeight: 220, overflow: 'auto',
     fontFamily: 'var(--mono)', fontSize: '0.75rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
@@ -314,7 +315,7 @@ const S = {
   editor: {
     width: '100%', minHeight: 240, marginTop: 6, padding: 'var(--s)', resize: 'vertical',
     fontFamily: 'var(--mono)', fontSize: '0.75rem', lineHeight: 1.5,
-    background: 'var(--bg-canvas)', color: 'var(--fg)',
-    border: '1px solid var(--border-strong)', borderRadius: 'var(--r-input)',
+    background: 'var(--bg-raised)', color: 'var(--fg)',
+    border: '1px solid var(--border)', borderRadius: 'var(--r-input)',
   },
 } satisfies Record<string, React.CSSProperties>;

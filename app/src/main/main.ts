@@ -3,14 +3,21 @@
 // 렌더러는 파일시스템에 직접 닿지 않는다. `ipc.ts` 의 SbApi 에 적힌 것이 표면의 전부이고
 // 그 밖의 것은 부를 수 없다. 그래서 여기서 sandbox 를 켜고 항해를 막는다 —
 // **이 앱이 브라우저가 되면 안 된다.** 사내 문서를 다루는 도구라 그게 곧 유출 경로다.
-import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, safeStorage, shell } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { IPC } from './ipc.ts';
 import { Store } from './store.ts';
 import { credStore, type Cipher } from './creds.ts';
 import { SOURCE_KIND_BY_EXT } from '../core/types.ts';
+import { LogBuffer, formatLog } from '../core/log.ts';
 import type { Answer } from '../core/query.ts';
+
+/**
+ * 오류 기록. **메모리에만 있다** — 디스크에 로그 파일을 남기지 않는다.
+ * 적재 시점에 파일명과 토큰이 지워지므로(core/log.ts) 여기 담긴 것은 그대로 복사해도 된다.
+ */
+const log = new LogBuffer();
 
 /**
  * OS 자격 증명 저장소. Windows 는 DPAPI, macOS 는 Keychain 이다.
@@ -49,7 +56,8 @@ function createWindow(): BrowserWindow {
     width: 1440,
     height: 900,
     minWidth: 1024,
-    backgroundColor: '#000000', // DESIGN-SYSTEM.md --bg-canvas. 흰 깜빡임을 막는다
+    backgroundColor: '#f7f4ed', // DESIGN-SYSTEM.md --bg-canvas. 첫 프레임 깜빡임을 막는다
+    icon: path.join(import.meta.dirname, '../renderer/icon-256.png'),
     show: false,
     webPreferences: {
       // preload 는 CommonJS 다. sandbox 를 켜면 ESM preload 를 못 쓴다 —
@@ -74,6 +82,15 @@ function createWindow(): BrowserWindow {
     return { action: 'deny' };
   });
 
+  // 렌더러가 죽거나 preload 가 안 뜨면 화면에는 아무것도 안 나온다. 그때도 기록은 남는다.
+  win.webContents.on('render-process-gone', (_e, d) => log.add('error', 'renderer', `렌더러가 죽었습니다 (${d.reason})`));
+  win.webContents.on('preload-error', (_e, p, err) => log.fail(`preload:${path.basename(p)}`, err));
+  win.webContents.on('unresponsive', () => log.add('warn', 'renderer', '창이 응답하지 않습니다'));
+  // 렌더러 콘솔의 오류만 가져온다. 나머지는 소음이다.
+  win.webContents.on('console-message', (e) => {
+    if (e.level === 'error') log.add('error', 'console', e.message);
+  });
+
   if (DEV_URL) void win.loadURL(DEV_URL);
   else void win.loadFile(path.join(import.meta.dirname, '../renderer/index.html'));
   return win;
@@ -85,8 +102,23 @@ function createWindow(): BrowserWindow {
 
 const EXTENSIONS = Object.keys(SOURCE_KIND_BY_EXT).map((e) => e.slice(1));
 
+/**
+ * 모든 IPC 가 이걸 거친다. 던져진 것은 기록하고 **그대로 다시 던진다** —
+ * 화면 동작은 전과 같고 기록만 남는다. 삼키면 실패가 조용해져서 더 나빠진다.
+ */
+function handle(channel: string, fn: Parameters<typeof ipcMain.handle>[1]): void {
+  ipcMain.handle(channel, async (e, ...args) => {
+    try {
+      return await fn(e, ...args);
+    } catch (err) {
+      log.fail(channel, err);
+      throw err;
+    }
+  });
+}
+
 function registerIpc(): void {
-  ipcMain.handle(IPC.pickVault, async (_e, mode: 'open' | 'create') => {
+  handle(IPC.pickVault, async (_e, mode: 'open' | 'create') => {
     const r = await dialog.showOpenDialog({
       title: mode === 'create' ? '새 Vault 를 만들 빈 폴더' : '기존 Vault 폴더',
       properties: mode === 'create' ? ['openDirectory', 'createDirectory'] : ['openDirectory'],
@@ -98,9 +130,9 @@ function registerIpc(): void {
     return v.config;
   });
 
-  ipcMain.handle(IPC.currentVault, () => store.vault?.config ?? null);
+  handle(IPC.currentVault, () => store.vault?.config ?? null);
 
-  ipcMain.handle(IPC.pickAndIngest, async () => {
+  handle(IPC.pickAndIngest, async () => {
     const r = await dialog.showOpenDialog({
       title: '문서 추가',
       properties: ['openFile', 'multiSelections'],
@@ -110,32 +142,32 @@ function registerIpc(): void {
     return store.ingest(r.filePaths);
   });
 
-  ipcMain.handle(IPC.listSources, () => store.listSources());
-  ipcMain.handle(IPC.search, (_e, q: string) => store.search(q));
-  ipcMain.handle(IPC.readSource, (_e, id: string) => store.readSource(id));
+  handle(IPC.listSources, () => store.listSources());
+  handle(IPC.search, (_e, q: string) => store.search(q));
+  handle(IPC.readSource, (_e, id: string) => store.readSource(id));
 
   // 관문 8 — 제안은 디스크를 건드리지 않는다. 적용만 쓴다.
-  ipcMain.handle(IPC.propose, (_e, id: string) => store.propose(id));
-  ipcMain.handle(IPC.applyReview, (_e, approved: string[]) => store.applyReview(approved));
-  ipcMain.handle(IPC.discardReview, () => store.discardReview());
-  ipcMain.handle(IPC.editOp, (_e, path: string, content: string) => store.editOp(path, content));
-  ipcMain.handle(IPC.spendStatus, () => store.spendStatus());
-  ipcMain.handle(IPC.plan, () => store.plan());
-  ipcMain.handle(IPC.ask, (_e, q: string) => store.ask(q));
-  ipcMain.handle(IPC.archiveAnswer, (_e, q: string, a: Answer) => store.archiveAnswer(q, a));
-  ipcMain.handle(IPC.estimateJudgment, () => store.estimateJudgment());
-  ipcMain.handle(IPC.lintJudgment, () => store.lintJudgment());
+  handle(IPC.propose, (_e, id: string) => store.propose(id));
+  handle(IPC.applyReview, (_e, approved: string[]) => store.applyReview(approved));
+  handle(IPC.discardReview, () => store.discardReview());
+  handle(IPC.editOp, (_e, path: string, content: string) => store.editOp(path, content));
+  handle(IPC.spendStatus, () => store.spendStatus());
+  handle(IPC.plan, () => store.plan());
+  handle(IPC.ask, (_e, q: string) => store.ask(q));
+  handle(IPC.archiveAnswer, (_e, q: string, a: Answer) => store.archiveAnswer(q, a));
+  handle(IPC.estimateJudgment, () => store.estimateJudgment());
+  handle(IPC.lintJudgment, () => store.lintJudgment());
 
   // 동기화 — 충돌은 디스크를 안 건드린다. 병합 결과만 다시 올라간다 (HUB.md §5)
-  ipcMain.handle(IPC.hubStatus, () => store.hubStatus());
-  ipcMain.handle(IPC.connectHub, (_e, url: string, token: string) => store.connectHub(url, token));
-  ipcMain.handle(IPC.disconnectHub, () => store.disconnectHub());
-  ipcMain.handle(IPC.syncNow, () => store.syncNow());
-  ipcMain.handle(IPC.conflicts, () => store.conflicts());
-  ipcMain.handle(IPC.resolveConflict, (_e, pageId: string, merged: string) => store.resolveConflict(pageId, merged));
+  handle(IPC.hubStatus, () => store.hubStatus());
+  handle(IPC.connectHub, (_e, url: string, token: string) => store.connectHub(url, token));
+  handle(IPC.disconnectHub, () => store.disconnectHub());
+  handle(IPC.syncNow, () => store.syncNow());
+  handle(IPC.conflicts, () => store.conflicts());
+  handle(IPC.resolveConflict, (_e, pageId: string, merged: string) => store.resolveConflict(pageId, merged));
 
   // 덱은 core 가 문자열로 만들고 파일로 쓰는 것은 여기서 한다.
-  ipcMain.handle(IPC.exportDeck, async () => {
+  handle(IPC.exportDeck, async () => {
     const vault = store.vault;
     if (!vault) return null;
     const r = await dialog.showSaveDialog({
@@ -147,9 +179,46 @@ function registerIpc(): void {
     await fs.writeFile(r.filePath, await store.exportDeck(vault.config.title), 'utf8');
     return r.filePath;
   });
+
+  /* 오류 기록 — 무엇이 실패했는지 사람이 통째로 옮길 수 있어야 한다 */
+
+  handle(IPC.logs, () => ({ entries: log.entries(), errors: log.errorCount() }));
+  handle(IPC.clearLogs, () => log.clear());
+  handle(IPC.reportError, (_e, scope: string, message: string, detail?: string) => {
+    log.add('error', `renderer:${scope}`, message, detail);
+  });
+  handle(IPC.copyLogs, () => {
+    const entries = log.entries();
+    clipboard.writeText(formatLog(entries, environment()));
+    return entries.length;
+  });
+  handle(IPC.saveLogs, async () => {
+    const r = await dialog.showSaveDialog({
+      title: '오류 기록 저장',
+      defaultPath: `co-secondbrain-${new Date().toISOString().slice(0, 10)}.log`,
+      filters: [{ name: '텍스트', extensions: ['log', 'txt'] }],
+    });
+    if (r.canceled || !r.filePath) return null;
+    await fs.writeFile(r.filePath, formatLog(log.entries(), environment()), 'utf8');
+    return r.filePath;
+  });
+}
+
+/** 기록 머리말. 금고 경로와 이름은 넣지 않는다 — 열렸는지만 적는다 */
+function environment(): Record<string, string> {
+  return {
+    앱: app.getVersion(),
+    실행: `${process.platform} ${process.arch} · Electron ${process.versions['electron']} · Chromium ${process.versions['chrome']}`,
+    금고: store.vault ? '열림' : '닫힘',
+  };
 }
 
 /* ------------------------------------------------------------------ */
+
+// 크래시 리포터를 안 두기로 했으므로(README) 프로세스가 죽기 전에 여기서 붙잡는다.
+// 앱은 계속 돌고, 사람이 [오류] 패널에서 사유를 복사해 갈 수 있다.
+process.on('uncaughtException', (err) => log.fail('main:uncaught', err));
+process.on('unhandledRejection', (err) => log.fail('main:rejection', err));
 
 // 창을 두 개 띄우면 같은 Vault 를 두 Store 가 잡는다. 하나만 돈다.
 if (!app.requestSingleInstanceLock()) app.quit();

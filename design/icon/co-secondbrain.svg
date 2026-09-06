@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>co-secondbrain</title>
+  <!-- 첨부 PNG 를 다시 그린 것이다. 원본의 어두운 배경은 넣지 않는다 —
+       바깥은 투명이고 크림 판만 남는다. 색은 design/design.md 의 토큰이다. -->
+  <g>
+    <!-- 크림 판. 아이콘이 어떤 배경에 놓여도 같은 모양으로 보인다 -->
+    <rect x="24" y="24" width="464" height="464" rx="112" fill="#fcfbf8" stroke="#eceae4" stroke-width="12"/>
+    <rect x="56" y="56" width="400" height="400" rx="88" fill="none" stroke="#eceae4" stroke-width="4"/>
+  </g>
+
+  <g fill="none" stroke="#1c1c1c" stroke-width="17" stroke-linecap="round" stroke-linejoin="round">
+    <!-- 뇌 윤곽. 열넷으로 나눈 타원에 바깥으로 부푼 호를 이어 붙였다 -->
+    <path d="M256.0 140.0 A37.9 37.9 0 0 1 315.9 152.1 A36.4 36.4 0 0 1 363.9 185.9 A34.5 34.5 0 0 1 390.5 234.9 A33.7 33.7 0 0 1 390.5 289.1 A34.5 34.5 0 0 1 363.9 338.1 A36.4 36.4 0 0 1 315.9 371.9 A37.9 37.9 0 0 1 256.0 384.0 A37.9 37.9 0 0 1 196.1 371.9 A36.4 36.4 0 0 1 148.1 338.1 A34.5 34.5 0 0 1 121.5 289.1 A33.7 33.7 0 0 1 121.5 234.9 A34.5 34.5 0 0 1 148.1 185.9 A36.4 36.4 0 0 1 196.1 152.1 A37.9 37.9 0 0 1 256.0 140.0 Z" fill="#f7f4ed"/>
+    <!-- 좌우 반구를 가르는 세로선. 악수가 가리는 데서 끊는다 -->
+    <path d="M256 146 C246 176 266 196 256 224"/>
+  </g>
+
+  <!-- 신경망. 회색 선과 점 — 명세의 opacity 기반 회색이다 -->
+  <g fill="none" stroke="#5f5f5d" stroke-width="11" stroke-linecap="round">
+    <path d="M176 214 C196 200 214 206 226 190"/>
+    <path d="M336 214 C316 200 298 206 286 190"/>
+    <path d="M160 316 C186 306 200 322 224 314"/>
+    <path d="M352 316 C326 306 312 322 288 314"/>
+  </g>
+  <g fill="#5f5f5d">
+    <circle cx="226" cy="186" r="12"/>
+    <circle cx="286" cy="186" r="12"/>
+    <circle cx="158" cy="318" r="12"/>
+    <circle cx="354" cy="318" r="12"/>
+    <circle cx="176" cy="212" r="10"/>
+    <circle cx="336" cy="212" r="10"/>
+  </g>
+
+  <!-- 악수. 양쪽에서 온 팔뚝이 가운데 맞잡은 손을 만든다. 뇌 윤곽 안에 들어간다.
+       팔뚝은 테두리를 먼저 긋고 안을 채운다 — 이음매가 지워져 한 덩어리가 된다.
+       32px 로 줄면 세부가 뭉치므로 손가락 선 셋만 남긴다 -->
+  <g fill="none" stroke-linecap="round">
+    <path d="M152 306 L236 300" stroke="#1c1c1c" stroke-width="58"/>
+    <path d="M360 306 L276 300" stroke="#1c1c1c" stroke-width="58"/>
+    <path d="M152 306 L236 300" stroke="#f7f4ed" stroke-width="32"/>
+    <path d="M360 306 L276 300" stroke="#f7f4ed" stroke-width="32"/>
+  </g>
+  <g transform="rotate(-14 256 300)">
+    <rect x="210" y="268" width="92" height="64" rx="30" fill="#f7f4ed" stroke="#1c1c1c" stroke-width="14"/>
+    <g fill="none" stroke="#1c1c1c" stroke-width="12" stroke-linecap="round">
+      <path d="M236 288 L234 312"/>
+      <path d="M256 286 L256 314"/>
+      <path d="M276 288 L278 312"/>
+    </g>
+  </g>
+</svg>

@@ -26,4 +26,10 @@ contextBridge.exposeInMainWorld('sb', {
   syncNow: () => ipcRenderer.invoke(IPC.syncNow),
   conflicts: () => ipcRenderer.invoke(IPC.conflicts),
   resolveConflict: (pageId: string, merged: string) => ipcRenderer.invoke(IPC.resolveConflict, pageId, merged),
+  logs: () => ipcRenderer.invoke(IPC.logs),
+  copyLogs: () => ipcRenderer.invoke(IPC.copyLogs),
+  saveLogs: () => ipcRenderer.invoke(IPC.saveLogs),
+  clearLogs: () => ipcRenderer.invoke(IPC.clearLogs),
+  reportError: (scope: string, message: string, detail?: string) =>
+    ipcRenderer.invoke(IPC.reportError, scope, message, detail),
 });
