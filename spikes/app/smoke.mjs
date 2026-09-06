@@ -23,7 +23,8 @@ async function loadPlaywright() {
   } catch {
     /* 지역 설치 없음 */
   }
-  const r = spawnSync('npm', ['root', '-g'], { encoding: 'utf8' });
+  // Windows 의 실제 파일은 npm.cmd 다. shell 없이 spawn 하면 ENOENT 로 죽는다.
+  const r = spawnSync('npm', ['root', '-g'], { encoding: 'utf8', shell: true });
   const root = r.stdout?.trim();
   if (!root) return null;
   try {
