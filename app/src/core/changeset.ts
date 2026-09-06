@@ -1,7 +1,7 @@
 // ChangeSet — LLM 이 낸 변경안을 디스크에 적용하기 전에 통과시키는 관문.
 //
 // PROVIDER-ROUTING.md §6 의 근거가 되는 코드다.
-// **8개 관문 중 7개가 여기(결정론적 검사)이고, 마지막 하나가 사람의 diff 승인이다.**
+// **9개 관문 중 8개가 여기(결정론적 검사)이고, 마지막 하나가 사람의 diff 승인이다.**
 // 그래서 공급자를 바꿔서 나빠질 수 있는 것은 "내용의 질"이지 "형식의 안전"이 아니다.
 //
 // LLM 은 이 파일을 거치지 않고는 디스크에 닿을 수 없다.
@@ -9,6 +9,8 @@ import fs from 'node:fs/promises';
 import { safeJoin, slugify } from './security.ts';
 import { citations, pageHash, parsePage, PageParseError, SUMMARY_MAX, serializePage } from './page.ts';
 import type { Vault } from './vault.ts';
+import { CLASSIFICATION_LABEL, classificationRank, DEFAULT_CLASSIFICATION } from './types.ts';
+import type { Classification } from './types.ts';
 
 export type Op = 'create' | 'update' | 'delete';
 
@@ -163,6 +165,78 @@ export function validateAnchors(
   return v;
 }
 
+/**
+ * 관문 9 의 근거. `extracted/` 가 진실이다.
+ *
+ * 인자로 받지 않고 **여기서 직접 읽는다.** 넘기는 자리를 하나라도 빠뜨리면 관문이
+ * 조용히 꺼지는데, 등급 관문은 조용히 꺼지면 안 된다.
+ */
+export async function sourceClassification(vault: Vault): Promise<Map<string, Classification>> {
+  const m = new Map<string, Classification>();
+  let names: string[];
+  try {
+    names = await fs.readdir(safeJoin(vault.root, 'extracted'));
+  } catch {
+    return m;
+  }
+  for (const name of names) {
+    if (!name.endsWith('.json') || name.startsWith('__')) continue;
+    try {
+      const raw: unknown = JSON.parse(await fs.readFile(safeJoin(vault.root, 'extracted', name), 'utf8'));
+      const e = raw as { sourceId?: string; classification?: Classification };
+      // 예전에 넣은 원본에는 등급이 없다. 기본값으로 본다.
+      if (e.sourceId) m.set(e.sourceId, e.classification ?? DEFAULT_CLASSIFICATION);
+    } catch {
+      /* 깨진 파일은 관문 5 가 "없는 원본"으로 잡는다 */
+    }
+  }
+  return m;
+}
+
+/**
+ * 관문 9 — 페이지가 인용한 원본보다 느슨한 등급일 수 없다.
+ *
+ * 기밀 문서에서 뽑은 문장을 담은 페이지가 `public` 이면 그 페이지를 공유하는 순간
+ * 원본이 새어 나간다. **사람이 등급을 낮추는 것이 아니라 인용이 등급을 끌어올린다.**
+ * 원본 목록만 있으면 계산으로 잡히므로 LLM 에게 묻지 않는다 (CLAUDE.md 원칙 3).
+ */
+export function validateClassification(
+  cs: ChangeSet,
+  sourceClass: ReadonlyMap<string, Classification>,
+): Violation[] {
+  const v: Violation[] = [];
+  for (const op of cs.ops) {
+    if (!op.content) continue;
+    let page;
+    try {
+      page = parsePage(op.content);
+    } catch {
+      continue; // 관문 1 이 이미 잡았다
+    }
+    const cited = [
+      ...citations(page.body).map((c) => c.sourceId),
+      ...page.front.claims.filter((c) => c.source).map((c) => c.source!.split('#')[0]!),
+    ];
+    let need: Classification = 'public';
+    let from = '';
+    for (const id of cited) {
+      const c = sourceClass.get(id);
+      if (c && classificationRank(c) > classificationRank(need)) {
+        need = c;
+        from = id;
+      }
+    }
+    if (classificationRank(page.front.classification) < classificationRank(need)) {
+      v.push({
+        gate: 9,
+        path: op.path,
+        reason: `${from} 이 ${CLASSIFICATION_LABEL[need]} 이라 페이지도 ${CLASSIFICATION_LABEL[need]} 이상이어야 합니다 (지금 ${CLASSIFICATION_LABEL[page.front.classification]})`,
+      });
+    }
+  }
+  return v;
+}
+
 /* ------------------------------------------------------------------ *
  * 관문 7 — 낙관적 동시성. 적용 직전에 디스크와 대조한다.
  * ------------------------------------------------------------------ */
@@ -179,7 +253,11 @@ export async function applyChangeSet(
   known: ReadonlyMap<string, ReadonlySet<string>>,
   onSnapshot?: (paths: string[]) => Promise<void>,
 ): Promise<ApplyResult> {
-  const violations = [...validateShape(cs), ...validateAnchors(cs, known)];
+  const violations = [
+    ...validateShape(cs),
+    ...validateAnchors(cs, known),
+    ...validateClassification(cs, await sourceClassification(vault)),
+  ];
   const conflicts: ApplyResult['conflicts'] = [];
   if (violations.length) return { applied: [], violations, conflicts };
 

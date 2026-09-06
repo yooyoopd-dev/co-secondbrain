@@ -4,6 +4,8 @@
 // front-matter 는 YAML, 본문은 wikilink 와 앵커 인용을 쓴다.
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { createHash } from 'node:crypto';
+import { CLASSIFICATIONS, DEFAULT_CLASSIFICATION, DOC_GENRES } from './types.ts';
+import type { Classification, DocGenre } from './types.ts';
 
 export type PageType = 'source' | 'entity' | 'concept' | 'synthesis' | 'overview';
 export type Confidence = 'EXTRACTED' | 'INFERRED' | 'AMBIGUOUS';
@@ -27,6 +29,13 @@ export interface PageFrontMatter {
   title: string;
   /** index.md 조립에 쓰인다. 300자 상한. */
   summary: string;
+  /**
+   * 열람 등급. 없으면 `internal` 이다 — 빠뜨렸을 때 공개로 떨어지면 실수가 유출이 된다.
+   * 관문 9 가 인용한 원본보다 느슨한 등급을 막는다.
+   */
+  classification: Classification;
+  /** 원래 문서가 무엇인가. 엔티티·개념 페이지에는 해당이 없어 null 이다 */
+  docGenre: DocGenre | null;
   aliases: string[];
   tags: string[];
   claims: Claim[];
@@ -52,6 +61,7 @@ const YAML_KEYS = {
   derivedFrom: 'derived_from',
   generatedBy: 'generated_by',
   updatedBy: 'updated_by',
+  docGenre: 'doc_genre',
 } as const;
 
 // 닫는 `---` 뒤의 줄바꿈은 본문에 남긴다. 여기서 먹어 버리면 읽고 다시 쓸 때마다
@@ -92,12 +102,25 @@ export function parsePage(markdown: string): Page {
     throw new PageParseError(`알 수 없는 type: ${type}`);
   }
 
+  // 없으면 기본값을 채우고, **적혀 있는데 목록 밖이면 던진다.** 모르는 값을 조용히
+  // 기본값으로 떨어뜨리면 오타 하나가 등급을 낮춘다.
+  const rawClass = o['classification'];
+  if (rawClass != null && !CLASSIFICATIONS.includes(rawClass as Classification)) {
+    throw new PageParseError(`알 수 없는 classification: ${String(rawClass)} (${CLASSIFICATIONS.join(' / ')})`);
+  }
+  const rawGenre = o[YAML_KEYS.docGenre];
+  if (rawGenre != null && !DOC_GENRES.includes(rawGenre as DocGenre)) {
+    throw new PageParseError(`알 수 없는 doc_genre: ${String(rawGenre)} (${DOC_GENRES.join(' / ')})`);
+  }
+
   return {
     front: {
       id: str('id'),
       type,
       title: str('title'),
       summary: str('summary', false),
+      classification: (rawClass as Classification | undefined) ?? DEFAULT_CLASSIFICATION,
+      docGenre: (rawGenre as DocGenre | undefined) ?? null,
       aliases: arr('aliases'),
       tags: arr('tags'),
       claims: parseClaims(o['claims']),
@@ -147,6 +170,8 @@ export function serializePage(page: Page): string {
     type: f.type,
     title: f.title,
     summary: f.summary.slice(0, SUMMARY_MAX),
+    classification: f.classification,
+    [YAML_KEYS.docGenre]: f.docGenre,
     aliases: f.aliases,
     tags: f.tags,
     claims: f.claims.map((c) => ({
@@ -196,6 +221,7 @@ export function emptyPage(id: string, type: PageType, title: string): Page {
       id, type, title,
       summary: '',
       aliases: [], tags: [], claims: [], openQuestions: [],
+      classification: 'internal', docGenre: null,
       derivedFrom: null, generatedBy: null,
       updated: new Date().toISOString(),
       updatedBy: '',

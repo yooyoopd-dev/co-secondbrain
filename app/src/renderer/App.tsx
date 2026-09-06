@@ -2,7 +2,9 @@
 // 좌: 원본 목록 / 중: 검색 결과 / 우: 원문 뷰어 (앵커로 점프)
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Extraction, SearchHit } from '../core/types.ts';
-import type { SbApi, HubStatus, IngestResult, SourceSummary } from '../main/ipc.ts';
+import type { SbApi, HubStatus, InboxItem, IngestResult, SourceSummary } from '../main/ipc.ts';
+import { CLASSIFICATIONS, CLASSIFICATION_LABEL, DEFAULT_CLASSIFICATION } from '../core/types.ts';
+import type { Classification } from '../core/types.ts';
 import type { LogEntry } from '../core/log.ts';
 import type { SyncConflict, SyncReport } from '../core/sync/index.ts';
 import type { VaultConfig } from '../core/vault.ts';
@@ -55,6 +57,9 @@ export default function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [errors, setErrors] = useState(0);
   const [debugOpen, setDebugOpen] = useState(false);
+  // 넣을 때 고르는 열람 등급. 기본은 사내다 — 공개를 기본으로 두면 실수가 유출이 된다
+  const [classification, setClassification] = useState<Classification>(DEFAULT_CLASSIFICATION);
+  const [inbox, setInbox] = useState<InboxItem[]>([]);
 
   useEffect(() => {
     void window.sb.currentVault().then(setVault);
@@ -76,6 +81,7 @@ export default function App() {
     setSpend(await window.sb.spendStatus());
     setPending((await window.sb.plan()).fresh.length);
     setHub(await window.sb.hubStatus());
+    setInbox(await window.sb.inbox());
     await pullLogs();
   }, [pullLogs]);
 
@@ -121,10 +127,10 @@ export default function App() {
     }
   };
 
-  const ingest = async () => {
+  const ingest = async (from: 'pick' | 'inbox') => {
     setBusy(true);
     try {
-      const r = await window.sb.pickAndIngest();
+      const r = from === 'pick' ? await window.sb.pickAndIngest(classification) : await window.sb.ingestInbox(classification);
       setReport(r);
       await refresh();
     } finally {
@@ -353,7 +359,11 @@ export default function App() {
         vault={vault}
         sources={sources}
         busy={busy}
-        onIngest={ingest}
+        onIngest={() => void ingest('pick')}
+        onInbox={() => void ingest('inbox')}
+        inbox={inbox}
+        classification={classification}
+        onClassification={setClassification}
         onOpen={() => openVault('open')}
         onSelect={(id) => jump(id, null)}
         spend={spend}
@@ -474,6 +484,10 @@ function Rail({
   sources,
   busy,
   onIngest,
+  onInbox,
+  inbox,
+  classification,
+  onClassification,
   onOpen,
   onSelect,
   spend,
@@ -489,6 +503,10 @@ function Rail({
   sources: SourceSummary[];
   busy: boolean;
   onIngest: () => void;
+  onInbox: () => void;
+  inbox: InboxItem[];
+  classification: Classification;
+  onClassification: (c: Classification) => void;
   onOpen: () => void;
   onSelect: (id: string) => void;
   spend: Status[];
@@ -513,7 +531,24 @@ function Rail({
           </span>
           {vault.title}
         </div>
-        <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+        {/* 넣기 전에 등급을 고른다. 넣고 나서 고치게 하면 아무도 안 고친다 */}
+        <label style={S.classField}>
+          <span style={S.classLabel}>넣을 자료의 열람 등급</span>
+          <select
+            value={classification}
+            disabled={busy}
+            aria-label="열람 등급"
+            onChange={(e) => onClassification(e.target.value as Classification)}
+            style={S.select}
+          >
+            {CLASSIFICATIONS.map((c) => (
+              <option key={c} value={c}>
+                {CLASSIFICATION_LABEL[c]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
           <button className="primary" style={{ flex: 1 }} disabled={busy} onClick={onIngest}>
             <Icon name="plus" /> 문서 추가
           </button>
@@ -544,6 +579,8 @@ function Rail({
       </div>
 
       <div style={S.railBody}>
+        <InboxSection items={inbox} busy={busy} onIngest={onInbox} />
+
         <div style={S.sectionLabel}>
           원본 {sources.length}건{pending !== null && pending > 0 ? ` · 제안 대기 ${pending}건` : ''}
         </div>
@@ -558,7 +595,7 @@ function Rail({
           <button key={s.sourceId} style={S.sourceRow} onClick={() => onSelect(s.sourceId)}>
             <span style={S.kindTag}>{s.kind}</span>
             <span style={S.sourceName}>{s.filename}</span>
-            <span style={S.chunkCount}>{s.chunks}</span>
+            <ClassBadge value={s.classification} />
           </button>
         ))}
         {!busy && sources.length === 0 && (
@@ -580,6 +617,52 @@ function Rail({
         <ErrorButton errors={errors} onClick={onDebug} style={{ marginTop: 6, width: '100%' }} />
       </div>
     </aside>
+  );
+}
+
+/**
+ * 받은 편지함. `00_INBOX/` 에 놓인 파일을 보여준다.
+ * **비어 있으면 아무것도 안 그린다** — 늘 떠 있는 빈 구역은 곧 안 보이게 된다.
+ */
+function InboxSection({ items, busy, onIngest }: { items: InboxItem[]; busy: boolean; onIngest: () => void }) {
+  if (items.length === 0) return null;
+  const fresh = items.filter((i) => i.supported && !i.ingested);
+  const bad = items.filter((i) => !i.supported);
+  return (
+    <section style={S.inbox}>
+      <div style={S.sectionLabel}>
+        받은 편지함 {items.length}건{fresh.length > 0 ? ` · 새 파일 ${fresh.length}건` : ' · 모두 처리됨'}
+      </div>
+      {items.slice(0, 6).map((i) => (
+        <div key={i.filename} style={S.inboxRow} title={i.supported ? '' : '앱이 읽을 수 없는 확장자입니다'}>
+          <span style={{ ...S.kindTag, color: i.supported ? 'var(--fg-faint)' : 'var(--warn)' }}>
+            {i.ingested ? '처리' : i.supported ? '대기' : '불가'}
+          </span>
+          <span style={S.sourceName}>{i.filename}</span>
+        </div>
+      ))}
+      {items.length > 6 && <div style={S.inboxMore}>외 {items.length - 6}건</div>}
+      {bad.length > 0 && <div style={S.inboxMore}>읽을 수 없는 파일 {bad.length}건은 넘어갑니다</div>}
+      <button style={{ width: '100%', marginTop: 6 }} disabled={busy || fresh.length === 0} onClick={onIngest}>
+        새 파일 {fresh.length}건 넣기
+      </button>
+    </section>
+  );
+}
+
+/** 열람 등급 배지. 사내는 기본값이라 가라앉히고 기밀·제한만 눈에 띄게 한다 */
+function ClassBadge({ value }: { value: Classification }) {
+  const loud = value === 'confidential' || value === 'restricted';
+  return (
+    <span
+      style={{
+        ...S.classBadge,
+        color: loud ? 'var(--danger)' : value === 'public' ? 'var(--ok)' : 'var(--fg-faint)',
+        borderColor: loud ? 'var(--danger)' : 'var(--border)',
+      }}
+    >
+      {CLASSIFICATION_LABEL[value]}
+    </span>
   );
 }
 
@@ -913,6 +996,23 @@ const S = {
   kindTag: { fontFamily: 'var(--mono)', fontSize: '0.6875rem', color: 'var(--fg-faint)', width: 34 },
   sourceName: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.875rem' },
   chunkCount: { fontFamily: 'var(--mono)', fontSize: '0.75rem', color: 'var(--fg-faint)' },
+  classField: { display: 'block', marginTop: 10 },
+  classLabel: { display: 'block', fontSize: '0.75rem', color: 'var(--fg-muted)', marginBottom: 4 },
+  select: {
+    font: 'inherit', fontSize: '0.875rem', width: '100%', padding: '6px 10px',
+    borderRadius: 'var(--r-input)', border: '1px solid var(--border)',
+    background: 'var(--bg-raised)', color: 'var(--fg)',
+  },
+  classBadge: {
+    fontFamily: 'var(--mono)', fontSize: '0.6875rem', border: '1px solid',
+    borderRadius: 'var(--r-pill)', padding: '0 7px', whiteSpace: 'nowrap',
+  },
+  inbox: { padding: '4px var(--s) var(--s)', borderBottom: '1px solid var(--border)' },
+  inboxRow: {
+    display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 6, alignItems: 'center',
+    padding: '3px 0', fontSize: '0.8125rem',
+  },
+  inboxMore: { fontSize: '0.75rem', color: 'var(--fg-faint)', padding: '2px 0' },
   spendBar: { borderTop: '1px solid var(--border)', padding: '6px var(--s)', fontSize: '0.75rem', fontFamily: 'var(--mono)' },
 
   center: { display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-surface)' },

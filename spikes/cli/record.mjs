@@ -53,7 +53,7 @@ export const SCHEMA = {
 };
 
 export const PAGE_TEMPLATE =
-  '---\nid: ent-example\ntype: entity\ntitle: 보기\nsummary: 한 줄 요약.\naliases: []\ntags: []\nclaims:\n  - text: 주장 한 문장.\n    source: src-example#slide-1\n    confidence: EXTRACTED\nopen_questions: []\nderived_from: null\ngenerated_by: claude-code\nupdated: 2026-09-05T00:00:00.000Z\nupdated_by: app\n---\n# 보기\n\n주장 한 문장.[^src-example#slide-1]\n';
+  '---\nid: ent-example\ntype: entity\ntitle: 보기\nsummary: 한 줄 요약.\nclassification: internal\ndoc_genre: null\naliases: []\ntags: []\nclaims:\n  - text: 주장 한 문장.\n    source: src-example#slide-1\n    confidence: EXTRACTED\nopen_questions: []\nderived_from: null\ngenerated_by: claude-code\nupdated: 2026-09-05T00:00:00.000Z\nupdated_by: app\n---\n# 보기\n\n주장 한 문장.[^src-example#slide-1]\n';
 
 export const CONVENTION = `# 위키 규약
 

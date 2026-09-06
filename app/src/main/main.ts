@@ -9,7 +9,7 @@ import path from 'node:path';
 import { IPC } from './ipc.ts';
 import { Store } from './store.ts';
 import { credStore, type Cipher } from './creds.ts';
-import { SOURCE_KIND_BY_EXT } from '../core/types.ts';
+import { SOURCE_KIND_BY_EXT, type Classification } from '../core/types.ts';
 import { LogBuffer, formatLog } from '../core/log.ts';
 import type { Answer } from '../core/query.ts';
 
@@ -132,15 +132,18 @@ function registerIpc(): void {
 
   handle(IPC.currentVault, () => store.vault?.config ?? null);
 
-  handle(IPC.pickAndIngest, async () => {
+  handle(IPC.pickAndIngest, async (_e, classification: Classification) => {
     const r = await dialog.showOpenDialog({
       title: '문서 추가',
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: '문서', extensions: EXTENSIONS }],
     });
     if (r.canceled) return { ok: [], failed: [], warnings: [], relations: 0 };
-    return store.ingest(r.filePaths);
+    return store.ingest(r.filePaths, classification);
   });
+
+  handle(IPC.inbox, () => store.inbox());
+  handle(IPC.ingestInbox, (_e, classification: Classification) => store.ingestInbox(classification));
 
   handle(IPC.listSources, () => store.listSources());
   handle(IPC.search, (_e, q: string) => store.search(q));

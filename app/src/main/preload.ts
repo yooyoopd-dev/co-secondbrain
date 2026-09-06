@@ -5,7 +5,9 @@ import { IPC } from './ipc.ts';
 contextBridge.exposeInMainWorld('sb', {
   pickVault: (mode: 'open' | 'create') => ipcRenderer.invoke(IPC.pickVault, mode),
   currentVault: () => ipcRenderer.invoke(IPC.currentVault),
-  pickAndIngest: () => ipcRenderer.invoke(IPC.pickAndIngest),
+  pickAndIngest: (classification: string) => ipcRenderer.invoke(IPC.pickAndIngest, classification),
+  inbox: () => ipcRenderer.invoke(IPC.inbox),
+  ingestInbox: (classification: string) => ipcRenderer.invoke(IPC.ingestInbox, classification),
   listSources: () => ipcRenderer.invoke(IPC.listSources),
   search: (q: string) => ipcRenderer.invoke(IPC.search, q),
   readSource: (id: string) => ipcRenderer.invoke(IPC.readSource, id),

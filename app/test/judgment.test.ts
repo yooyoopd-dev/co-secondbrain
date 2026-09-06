@@ -10,6 +10,7 @@ const entry = (slug: string, title: string): WikiEntry => ({
   page: {
     front: {
       id: `ent-${slug}`, type: 'entity', title, summary: '요약.', aliases: [], tags: [], claims: [],
+      classification: 'internal', docGenre: null,
       openQuestions: [], derivedFrom: null, generatedBy: null, updated: '2026-09-06T00:00:00.000Z', updatedBy: 'app',
     },
     body: '\n# 본문\n\n아주 긴 본문이 여기 있다.\n',

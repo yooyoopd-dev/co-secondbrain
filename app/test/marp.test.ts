@@ -9,6 +9,7 @@ const entry = (title: string, summary: string, claims: Claim[] = [], openQuestio
   page: {
     front: {
       id: `ent-${title}`, type: 'entity', title, summary, aliases: [], tags: [],
+      classification: 'internal', docGenre: null,
       claims, openQuestions, derivedFrom: null, generatedBy: 'claude-code',
       updated: '2026-09-06T00:00:00.000Z', updatedBy: 'app',
     },

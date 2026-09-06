@@ -18,6 +18,7 @@ function md(title: string, claims: { text: string; source: string | null; confid
   return serializePage({
     front: {
       id: `ent-${title}`, type: 'entity', title, summary: '요약.', aliases: [], tags: [],
+      classification: 'internal', docGenre: null,
       claims, openQuestions: [], derivedFrom: null, generatedBy: 'claude-code',
       updated: '2026-09-05T00:00:00.000Z', updatedBy: 'app',
     },

@@ -348,6 +348,7 @@ const PAGE = serializePage({
   front: {
     id: 'ent-a', type: 'entity', title: '에이', summary: '요약.', aliases: [], tags: [],
     claims: [{ text: '주장.', source: 'src-kickoff#slide-3', confidence: 'EXTRACTED' }],
+    classification: 'internal', docGenre: null,
     openQuestions: [], derivedFrom: null,
     generatedBy: 'claude-code', // 모델이 규약 표본에서 베낀 값
     updated: '2026-09-05T00:00:00.000Z', // 표본의 가짜 날짜

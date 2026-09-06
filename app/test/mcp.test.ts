@@ -125,6 +125,7 @@ const page = (id: string, title: string, body: string, summary = '') =>
   serializePage({
     front: {
       id, type: 'entity', title, summary, aliases: [], tags: [], claims: [],
+      classification: 'internal', docGenre: null,
       openQuestions: [], derivedFrom: null, generatedBy: 'claude-code',
       updated: '2026-09-05T00:00:00.000Z', updatedBy: 'app',
     },

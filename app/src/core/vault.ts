@@ -7,6 +7,10 @@ import path from 'node:path';
 import { safeJoin } from './security.ts';
 
 export const VAULT_DIRS = [
+  // 사람이 파일을 놓는 대기함. Obsidian 파일 목록에서 맨 위에 오도록 번호를 붙인다.
+  // **앱은 이 폴더의 파일을 옮기지도 지우지도 않는다** — 사람이 넣은 것을 앱이 치우면
+  // 어디로 갔는지 찾을 수 없다. 처리 여부는 manifest 의 내용 해시로 판정한다.
+  '00_INBOX',
   'sources',
   'extracted',
   'wiki',
@@ -52,6 +56,24 @@ const AGENTS_MD = `# 위키 규약
 - YAML front-matter 로 시작한다
 - 모든 주장에 앵커 인용을 붙인다: \`[^src-kickoff#slide-12]\`
 - 출처 없는 문장은 쓰지 않는다
+
+## 열람 등급
+
+\`classification\` 은 넷 중 하나다. 빠뜨리면 \`internal\` 로 본다.
+
+- \`public\` — 사외 공개 가능
+- \`internal\` — 사내 전용 (기본값)
+- \`confidential\` — 기밀
+- \`restricted\` — 제한. 지정된 사람만
+
+**인용이 등급을 끌어올린다.** 기밀 원본을 인용한 페이지는 기밀 이상이어야 한다.
+낮추면 관문 9 가 막는다.
+
+## 문서 장르
+
+\`doc_genre\` 는 원래 문서가 무엇인가다. 해당이 없으면 \`null\` 로 둔다.
+\`guideline\` \`factsheet\` \`report\` \`intelligence\` \`meeting\` 중 하나이고, 여기 없는 것은
+\`tags\` 에 적는다.
 
 ## 신뢰도
 

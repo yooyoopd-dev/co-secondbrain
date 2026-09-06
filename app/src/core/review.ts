@@ -9,7 +9,15 @@ import fs from 'node:fs/promises';
 import { diffLines, diffStat, type DiffLine } from './diff.ts';
 import { citations, pageHash, parsePage, type Claim } from './page.ts';
 import { safeJoin } from './security.ts';
-import { validateAnchors, validateShape, type ChangeSet, type ChangeOp, type Violation } from './changeset.ts';
+import {
+  sourceClassification,
+  validateAnchors,
+  validateClassification,
+  validateShape,
+  type ChangeSet,
+  type ChangeOp,
+  type Violation,
+} from './changeset.ts';
 import type { Vault } from './vault.ts';
 
 /** ChangeSet 전체에 걸린 위반은 이 경로로 표시된다 (changeset.ts) */
@@ -58,7 +66,11 @@ export async function buildReview(
   cs: ChangeSet,
   anchors: ReadonlyMap<string, ReadonlySet<string>>,
 ): Promise<Review> {
-  const all = [...validateShape(cs), ...validateAnchors(cs, anchors)];
+  const all = [
+    ...validateShape(cs),
+    ...validateAnchors(cs, anchors),
+    ...validateClassification(cs, await sourceClassification(vault)),
+  ];
   const ops: OpReview[] = [];
 
   for (const op of cs.ops) {

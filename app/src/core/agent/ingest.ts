@@ -18,6 +18,7 @@ export const PAGE_TEMPLATE = serializePage({
     tags: [],
     claims: [{ text: '주장 한 문장.', source: 'src-example#slide-1', confidence: 'EXTRACTED' }],
     openQuestions: [],
+    classification: 'internal', docGenre: null,
     derivedFrom: null,
     generatedBy: 'claude-code',
     updated: '2026-09-05T00:00:00.000Z',

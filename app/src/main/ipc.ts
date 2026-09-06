@@ -10,6 +10,7 @@ import type { ParsedJudgment } from '../core/lint/judgment.ts';
 import type { ScanEstimate } from '../core/tokens.ts';
 import type { SyncConflict, SyncReport } from '../core/sync/index.ts';
 import type { LogEntry } from '../core/log.ts';
+import type { Classification } from '../core/types.ts';
 
 export interface IngestResult {
   ok: string[];
@@ -23,6 +24,17 @@ export interface SourceSummary {
   filename: string;
   kind: string;
   chunks: number;
+  classification: Classification;
+}
+
+/** 받은 편지함(`00_INBOX/`)의 파일 한 건 */
+export interface InboxItem {
+  filename: string;
+  bytes: number;
+  /** 앱이 읽을 수 있는 확장자인가 */
+  supported: boolean;
+  /** 이미 넣은 것인가. 내용 해시로 판정하므로 이름을 바꿔도 같은 것으로 본다 */
+  ingested: boolean;
 }
 
 /** 변경안 제안 결과. 실패해도 던지지 않는다 — 렌더러가 사유를 그대로 보여준다. */
@@ -69,7 +81,12 @@ export interface LogSnapshot {
 export interface SbApi {
   pickVault(mode: 'open' | 'create'): Promise<VaultConfig | null>;
   currentVault(): Promise<VaultConfig | null>;
-  pickAndIngest(): Promise<IngestResult>;
+  /** 파일 선택 대화상자를 열어 넣는다. 등급은 넣는 사람이 고른다 */
+  pickAndIngest(classification: Classification): Promise<IngestResult>;
+  /** `00_INBOX/` 에 놓인 파일 목록. 앱은 이 폴더를 건드리지 않는다 */
+  inbox(): Promise<InboxItem[]>;
+  /** 받은 편지함에서 아직 안 넣은 것만 넣는다 */
+  ingestInbox(classification: Classification): Promise<IngestResult>;
   listSources(): Promise<SourceSummary[]>;
   search(query: string): Promise<SearchHit[]>;
   readSource(sourceId: string): Promise<Extraction | null>;
@@ -121,6 +138,8 @@ export const IPC = {
   pickVault: 'sb:pickVault',
   currentVault: 'sb:currentVault',
   pickAndIngest: 'sb:pickAndIngest',
+  inbox: 'sb:inbox',
+  ingestInbox: 'sb:ingestInbox',
   listSources: 'sb:listSources',
   search: 'sb:search',
   readSource: 'sb:readSource',

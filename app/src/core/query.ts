@@ -112,6 +112,7 @@ export function toChangeSet(question: string, a: Answer, now: string, updatedBy 
             tags: [],
             claims,
             openQuestions: [],
+            classification: 'internal', docGenre: null,
             derivedFrom: null,
             generatedBy: null,
             updated: now,

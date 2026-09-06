@@ -25,6 +25,8 @@ test('디스크에서 읽어 그대로 쓰면 바이트가 같다 — diff 잡�
     'type: entity',
     'title: 에이콤',
     'summary: 주 협력사.',
+    'classification: internal',
+    'doc_genre: null',
     'aliases: []',
     'tags: []',
     'claims: []',

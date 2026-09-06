@@ -19,6 +19,7 @@ const goodPage = (id = 'ent-acme', title = '에이콤') => serializePage({
     summary: '킥오프의 주 협력사.',
     aliases: [], tags: [], openQuestions: [],
     claims: [{ text: '주 협력사로 확정됨', source: 'src-kickoff#slide-12', confidence: 'EXTRACTED' }],
+    classification: 'internal', docGenre: null,
     derivedFrom: null, generatedBy: 'claude-code/2.1.260',
     updated: '2026-09-04T00:00:00.000Z', updatedBy: 'hong@corp',
   },

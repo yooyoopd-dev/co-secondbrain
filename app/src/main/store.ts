@@ -19,6 +19,11 @@ import { DEFAULT_MONTHLY_USD, EMPTY_LOG, add as addSpend, status as spendStatus,
 import { read as readSpend, write as writeSpend } from '../core/spend-file.ts';
 import type { ProviderId } from '../core/agent/types.ts';
 import { CHANGESET_SCHEMA } from '../core/agent/schema.ts';
+import { DEFAULT_CLASSIFICATION, SOURCE_KIND_BY_EXT, type Classification } from '../core/types.ts';
+import type { InboxItem } from './ipc.ts';
+
+/** 받은 편지함 폴더. vault.ts 의 VAULT_DIRS 와 같은 이름이어야 한다 */
+const INBOX_DIR = '00_INBOX';
 import { conventionFile, promptFor, type WikiRef } from '../core/agent/ingest.ts';
 import { ALLOWED_TOOLS, mcpConfig, type McpLaunch } from '../core/mcp/config.ts';
 import { ANSWER_SCHEMA, parseAnswer, questionPrompt, toChangeSet, type Answer } from '../core/query.ts';
@@ -97,8 +102,13 @@ export class Store {
     this.#conflicts = [];
   }
 
-  /** 파일 여러 개를 인제스트한다. 한 건이 실패해도 나머지는 계속한다. */
-  async ingest(files: readonly string[]): Promise<IngestResult> {
+  /**
+   * 파일 여러 개를 인제스트한다. 한 건이 실패해도 나머지는 계속한다.
+   *
+   * `classification` 은 넣는 사람이 고른다. 고르지 않으면 `internal` 이다 —
+   * 공개를 기본으로 두면 빠뜨린 것이 곧 유출이다.
+   */
+  async ingest(files: readonly string[], classification: Classification = DEFAULT_CLASSIFICATION): Promise<IngestResult> {
     const v = this.#require();
     const res: IngestResult = { ok: [], failed: [], warnings: [], relations: 0 };
     const mails: MailMeta[] = [];
@@ -107,7 +117,7 @@ export class Store {
       const filename = path.basename(file);
       try {
         const dest = await importSource(v, file);
-        const ext = await extractFile(dest);
+        const ext = { ...(await extractFile(dest)), classification };
         await this.#persist(ext);
         if (ext.kind === 'eml' || ext.kind === 'msg') {
           mails.push((await extractEmail(dest, ext.sourceId)).meta);
@@ -149,9 +159,63 @@ export class Store {
     for (const name of await fs.readdir(dir)) {
       if (!name.endsWith('.json') || name.startsWith('__')) continue;
       const e = JSON.parse(await fs.readFile(path.join(dir, name), 'utf8')) as Extraction;
-      out.push({ sourceId: e.sourceId, filename: e.filename, kind: e.kind, chunks: e.chunks.length });
+      out.push({
+        sourceId: e.sourceId,
+        filename: e.filename,
+        kind: e.kind,
+        chunks: e.chunks.length,
+        classification: e.classification ?? DEFAULT_CLASSIFICATION,
+      });
     }
     return out.sort((a, b) => a.filename.localeCompare(b.filename, 'ko'));
+  }
+
+  /**
+   * 받은 편지함. `00_INBOX/` 에 놓인 파일을 훑는다.
+   *
+   * **파일을 옮기지도 지우지도 않는다.** 사람이 넣은 것을 앱이 치우면 어디로 갔는지
+   * 찾을 수 없다. 이미 넣은 것인지는 내용 해시로 판정하므로 이름을 바꿔도 같은 것으로 본다.
+   */
+  async inbox(): Promise<InboxItem[]> {
+    const v = this.#require();
+    const dir = safeJoin(v.root, INBOX_DIR);
+    let names: string[];
+    try {
+      names = await fs.readdir(dir);
+    } catch {
+      return [];
+    }
+    const out: InboxItem[] = [];
+    for (const name of names.sort((a, b) => a.localeCompare(b, 'ko'))) {
+      if (name.startsWith('.')) continue;
+      const full = path.join(dir, name);
+      let bytes: Buffer;
+      try {
+        const st = await fs.stat(full);
+        if (!st.isFile()) continue;
+        bytes = await fs.readFile(full);
+      } catch {
+        continue;
+      }
+      const ext = path.extname(name).toLowerCase();
+      out.push({
+        filename: name,
+        bytes: bytes.length,
+        supported: ext in SOURCE_KIND_BY_EXT,
+        ingested: this.#manifest.entries[hashContent(bytes)] !== undefined,
+      });
+    }
+    return out;
+  }
+
+  /** 받은 편지함에서 아직 안 넣은 것만 인제스트한다. 원본은 그 자리에 그대로 둔다. */
+  async ingestInbox(classification: Classification = DEFAULT_CLASSIFICATION): Promise<IngestResult> {
+    const v = this.#require();
+    const fresh = (await this.inbox()).filter((i) => i.supported && !i.ingested);
+    return this.ingest(
+      fresh.map((i) => path.join(safeJoin(v.root, INBOX_DIR), i.filename)),
+      classification,
+    );
   }
 
   search(query: string) {
