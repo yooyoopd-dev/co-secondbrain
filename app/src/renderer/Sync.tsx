@@ -66,7 +66,7 @@ export default function SyncPanel({
         </header>
 
         <div style={S.body}>
-          {status.personal && <p style={S.warnBox}>개인 금고는 동기화하지 않습니다. 이 금고의 내용은 이 컴퓨터를 떠나지 않습니다.</p>}
+          {status.personal && <p style={S.warnBox}>개인 Vault 는 동기화하지 않습니다. 이 Vault 의 내용은 이 컴퓨터를 떠나지 않습니다.</p>}
 
           {!status.personal && !status.hasToken && (
             <Connect status={status} busy={busy} onConnect={onConnect} />
@@ -110,7 +110,7 @@ function Connect({
     <section style={S.card}>
       <div style={S.cardTitle}>허브 연결</div>
       <p style={S.meta}>
-        토큰은 OS 자격 증명 저장소에 암호문으로 들어갑니다. 금고 폴더에는 쓰지 않습니다.
+        토큰은 OS 자격 증명 저장소에 암호문으로 들어갑니다. Vault 폴더에는 쓰지 않습니다.
       </p>
       {!status.canStoreToken && (
         <p style={S.warnBox}>

@@ -3,7 +3,7 @@
 // 렌더러는 파일시스템에 직접 닿지 않는다. `ipc.ts` 의 SbApi 에 적힌 것이 표면의 전부이고
 // 그 밖의 것은 부를 수 없다. 그래서 여기서 sandbox 를 켜고 항해를 막는다 —
 // **이 앱이 브라우저가 되면 안 된다.** 사내 문서를 다루는 도구라 그게 곧 유출 경로다.
-import { app, BrowserWindow, clipboard, dialog, ipcMain, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, safeStorage, shell } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { IPC } from './ipc.ts';
@@ -140,6 +140,12 @@ function registerIpc(): void {
   // 첫 화면으로 돌아간다. 검토 대기는 여기서 사라지므로 화면이 먼저 확인을 받는다.
   handle(IPC.closeVault, () => store.close());
 
+  // 종료도 화면이 부른다. 검토 대기가 있으면 렌더러가 먼저 물어본 뒤에 온다.
+  handle(IPC.quit, () => {
+    store.close();
+    app.quit();
+  });
+
   handle(IPC.pickAndIngest, async (_e, classification: Classification) => {
     const r = await dialog.showOpenDialog({
       title: '문서 추가',
@@ -231,7 +237,7 @@ function environment(): Record<string, string> {
   return {
     앱: app.getVersion(),
     실행: `${process.platform} ${process.arch} · Electron ${process.versions['electron']} · Chromium ${process.versions['chrome']}`,
-    금고: store.vault ? '열림' : '닫힘',
+    Vault: store.vault ? '열림' : '닫힘',
   };
 }
 
@@ -246,7 +252,13 @@ process.on('unhandledRejection', (err) => log.fail('main:rejection', err));
 if (!app.requestSingleInstanceLock()) app.quit();
 
 void app.whenReady().then(async () => {
+  // 기본 메뉴(File/Edit/View/Window/Help)를 없앤다. 이 앱에는 거기 걸 것이 없고,
+  // View 메뉴의 새로 고침·개발자 도구는 창 하나짜리 도구에 혼란만 준다.
+  Menu.setApplicationMenu(null);
   await store.loadPrefs();
+  // 공급자 탐지는 프로세스를 띄운다(실측 약 5초). 설정을 처음 열 때 돌리면 그만큼
+  // 화면이 멈춘 것처럼 보이므로 켤 때 미리 돌려 캐시에 올린다. 실패해도 앱은 뜬다.
+  void store.available().catch(() => undefined);
   registerIpc();
   const win = createWindow();
   app.on('second-instance', () => {

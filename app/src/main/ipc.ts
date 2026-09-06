@@ -97,8 +97,10 @@ export interface LogSnapshot {
 export interface SbApi {
   pickVault(mode: 'open' | 'create'): Promise<VaultConfig | null>;
   currentVault(): Promise<VaultConfig | null>;
-  /** 금고를 닫고 첫 화면으로 돌아간다. 검토 대기와 충돌은 같이 버려진다 */
+  /** Vault 를 닫고 첫 화면으로 돌아간다. 검토 대기와 충돌은 같이 버려진다 */
   closeVault(): Promise<void>;
+  /** 앱을 끝낸다. 물어보는 것은 화면이 한다 */
+  quit(): Promise<void>;
   /** 파일 선택 대화상자를 열어 넣는다. 등급은 넣는 사람이 고른다 */
   pickAndIngest(classification: Classification): Promise<IngestResult>;
   /** `00_INBOX/` 에 놓인 파일 목록. 앱은 이 폴더를 건드리지 않는다 */
@@ -165,6 +167,7 @@ export const IPC = {
   pickVault: 'sb:pickVault',
   currentVault: 'sb:currentVault',
   closeVault: 'sb:closeVault',
+  quit: 'sb:quit',
   pickAndIngest: 'sb:pickAndIngest',
   inbox: 'sb:inbox',
   ingestInbox: 'sb:ingestInbox',

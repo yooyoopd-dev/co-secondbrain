@@ -347,6 +347,13 @@ export default function App() {
     setCore(EMPTY_CORE_CONTEXT);
   };
 
+  /** 앱을 끝낸다. 승인 전 변경안은 메모리에만 있으므로 여기서도 먼저 묻는다 */
+  const quit = async () => {
+    if (review && !window.confirm('검토 중인 변경안이 사라집니다. 그래도 끝냅니까?')) return;
+    await window.sb.quit();
+  };
+
+  // 설정에서 넘어올 때는 설정을 먼저 닫는다. 겹침 화면을 쌓으면 닫는 순서가 헷갈린다.
   const openCore = async () => {
     setCore(await window.sb.coreContext());
     setCoreOpen(true);
@@ -417,7 +424,8 @@ export default function App() {
         classification={classification}
         onClassification={setClassification}
         onSettings={() => void openSettings()}
-        onCore={() => void openCore()}
+        onCloseVault={() => void closeVault()}
+        onQuit={() => void quit()}
         onSelect={(id) => jump(id, null)}
         spend={spend}
         pending={pending}
@@ -472,6 +480,7 @@ export default function App() {
       {settings && (
         <SettingsPanel
           settings={settings}
+          hub={hub}
           busy={busy}
           onProvider={(id) => void pickProvider(id)}
           onOpenVault={() => {
@@ -479,6 +488,14 @@ export default function App() {
             void openVault('open');
           }}
           onCloseVault={() => void closeVault()}
+          onCore={() => {
+            setSettings(null);
+            void openCore();
+          }}
+          onHub={() => {
+            setSettings(null);
+            void openSync();
+          }}
           onClose={() => setSettings(null)}
         />
       )}
@@ -509,7 +526,7 @@ function Welcome({
         <img src="./icon-256.png" width={72} height={72} alt="" style={S.mark} />
         <h1 style={S.h1}>co-secondbrain</h1>
         <p style={{ color: 'var(--fg-muted)', marginTop: 0 }}>
-          프로젝트 문서를 넣으면 원문 위치까지 찾아 주는 개인 금고입니다.
+          프로젝트 문서를 넣으면 원문 위치까지 찾아 주는 개인 Vault 입니다.
           이 단계에서는 LLM 을 쓰지 않고 전부 로컬에서 처리합니다.
         </p>
         <div style={{ display: 'flex', gap: 'var(--s)', marginTop: 24, alignItems: 'center' }}>
@@ -558,7 +575,8 @@ function Rail({
   classification,
   onClassification,
   onSettings,
-  onCore,
+  onCloseVault,
+  onQuit,
   onSelect,
   spend,
   pending,
@@ -578,7 +596,8 @@ function Rail({
   classification: Classification;
   onClassification: (c: Classification) => void;
   onSettings: () => void;
-  onCore: () => void;
+  onCloseVault: () => void;
+  onQuit: () => void;
   onSelect: (id: string) => void;
   spend: Status[];
   pending: number | null;
@@ -596,7 +615,7 @@ function Rail({
       <div style={{ ...S.railHead, borderBottomColor: isCo ? 'var(--info)' : 'var(--border)' }}>
         <div style={S.vaultName}>
           {/* 색 하나로 공간을 구분하지 않는다. 아이콘과 접두 텍스트를 같이 쓴다 */}
-          <span style={S.lock} title={isCo ? 'CO 공간' : '개인 금고'}>
+          <span style={S.lock} title={isCo ? 'CO 공간' : '개인 Vault'}>
             <Icon name={isCo ? 'users' : 'lock'} size={14} />
             {isCo ? 'CO' : '개인'}
           </span>
@@ -623,10 +642,6 @@ function Rail({
           <button className="primary" style={{ flex: 1 }} disabled={busy} onClick={onIngest}>
             <Icon name="plus" /> 문서 추가
           </button>
-          {/* 금고 경로·CLI·금고 닫기가 전부 여기 있다 */}
-          <button aria-label="설정" disabled={busy} onClick={onSettings} title="설정">
-            <Icon name="gear" />
-          </button>
         </div>
         <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
           <button style={{ flex: 1 }} disabled={busy} onClick={onLint} title="LLM 판단 검사 4종">
@@ -636,18 +651,14 @@ function Rail({
             슬라이드
           </button>
         </div>
-        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-          <button style={{ flex: 1 }} disabled={busy} onClick={onCore} title="LLM 이 매 호출에서 먼저 읽는 세 문항">
-            <Icon name="user" /> 내 맥락
-          </button>
-        </div>
-        {hub && !hub.personal && (
+        {/* 충돌은 사람이 먼저 알아야 한다. 설정 안에 묻어 두지 않고 여기 띄운다 */}
+        {hub && !hub.personal && hub.conflicts > 0 && (
           <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
             <button
-              style={{ flex: 1, ...(hub.conflicts > 0 ? { borderColor: 'var(--warn)', color: 'var(--warn)' } : {}) }}
+              style={{ flex: 1, borderColor: 'var(--warn)', color: 'var(--warn)' }}
               disabled={busy}
               onClick={onSync}
-              title={hub.hasToken ? '허브와 동기화' : '허브에 연결'}
+              title="병합할 충돌이 있습니다"
             >
               {syncLabel(hub)}
             </button>
@@ -692,6 +703,21 @@ function Rail({
           </div>
         ))}
         <ErrorButton errors={errors} onClick={onDebug} style={{ marginTop: 6, width: '100%' }} />
+        {/*
+          앱을 벗어나는 세 가지를 한 줄에 모은다. 위쪽은 이 Vault 안에서 하는 일이고
+          여기는 Vault 를 바꾸거나 앱을 끝내는 자리다. 섞어 놓으면 실수로 눌린다.
+        */}
+        <div style={S.exitRow}>
+          <button style={S.exitButton} disabled={busy} onClick={onSettings}>
+            설정
+          </button>
+          <button style={S.exitButton} disabled={busy} onClick={onCloseVault} title="Vault 를 닫고 첫 화면으로">
+            Vault선택
+          </button>
+          <button style={S.exitButton} disabled={busy} onClick={onQuit}>
+            종료
+          </button>
+        </div>
       </div>
     </aside>
   );
@@ -1090,7 +1116,11 @@ const S = {
     padding: '3px 0', fontSize: '0.8125rem',
   },
   inboxMore: { fontSize: '0.75rem', color: 'var(--fg-faint)', padding: '2px 0' },
-  spendBar: { borderTop: '1px solid var(--border)', padding: '6px var(--s)', fontSize: '0.75rem', fontFamily: 'var(--mono)' },
+  spendBar: { borderTop: '1px solid var(--border)', padding: '6px var(--s) var(--s)', fontSize: '0.75rem', fontFamily: 'var(--mono)' },
+  // 셋을 같은 폭으로 나눠 하나가 눈에 더 띄지 않게 한다. 종료를 붉게 칠하지도 않는다 —
+  // 상시 경고색은 곧 무시되고, 여기서 잃는 것은 승인 전 변경안뿐이라 그때만 물어본다.
+  exitRow: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: 6 },
+  exitButton: { fontSize: '0.8125rem', padding: '4px 0', justifyContent: 'center' },
 
   center: { display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-surface)' },
   searchBar: { padding: 'var(--s)', borderBottom: '1px solid var(--border)' },

@@ -3,57 +3,75 @@
 // **판정은 여기서 하지 않는다.** 설치 여부도 저장도 main 이 한다. 이 파일은 받은 것을
 // 그리고 고른 것을 넘길 뿐이다.
 import { useEffect, useState } from 'react';
-import type { AppSettings } from '../main/ipc.ts';
+import type { AppSettings, HubStatus } from '../main/ipc.ts';
 import type { ProviderId } from '../core/agent/types.ts';
 import { CORE_CONTEXT_FIELDS, CORE_CONTEXT_PATH, type CoreContext } from '../core/context.ts';
 import { Icon } from './icons.tsx';
 
 export function SettingsPanel({
   settings,
+  hub,
   busy,
   onProvider,
   onOpenVault,
   onCloseVault,
+  onCore,
+  onHub,
   onClose,
 }: {
   settings: AppSettings;
+  /** 허브 상태. Vault 를 안 열었으면 null 이고 그때는 동기화 줄을 안 그린다 */
+  hub: HubStatus | null;
   busy: boolean;
   onProvider: (id: ProviderId | null) => void;
   onOpenVault: () => void;
   onCloseVault: () => void;
+  onCore: () => void;
+  onHub: () => void;
   onClose: () => void;
 }) {
   return (
-    <Shell title="설정" busy={busy} onClose={onClose}>
+    <Shell title="설정" version={settings.version} busy={busy} onClose={onClose}>
       <section style={S.block}>
-        <div style={S.blockHead}>앱</div>
-        <Row label="판" value={`v${settings.version}`} />
-      </section>
-
-      <section style={S.block}>
-        <div style={S.blockHead}>금고</div>
+        <div style={S.blockHead}>Vault</div>
         {settings.vaultRoot === null ? (
           <div style={S.dim}>아직 안 열었습니다.</div>
         ) : (
           <>
             <Row label="이름" value={settings.vaultTitle ?? ''} />
-            <Row label="종류" value={settings.personal ? '개인 금고' : 'CO 영역'} />
+            <Row label="종류" value={settings.personal ? '개인 Vault' : 'CO 영역'} />
             {/* 경로는 길다. 줄바꿈을 막지 않는다 — 잘라 놓으면 옮겨 적을 수가 없다 */}
             <Row label="폴더" value={settings.vaultRoot} mono />
           </>
         )}
         <div style={S.rowButtons}>
           <button disabled={busy} onClick={onOpenVault}>
-            다른 금고 열기
+            다른 Vault 열기
           </button>
           <button disabled={busy || settings.vaultRoot === null} onClick={onCloseVault}>
-            금고 닫고 첫 화면으로
+            Vault선택
           </button>
         </div>
       </section>
 
       <section style={S.block}>
-        <div style={S.blockHead}>쓸 CLI</div>
+        <div style={S.blockHead}>맥락과 연결</div>
+        <div style={S.rowButtons}>
+          <button disabled={busy || settings.vaultRoot === null} onClick={onCore}>
+            <Icon name="user" /> 나의 핵심 맥락
+          </button>
+          {/* 개인 Vault 에는 허브가 없다. 눌러도 할 것이 없는 버튼은 안 그린다 */}
+          {hub && !hub.personal && (
+            <button disabled={busy} onClick={onHub}>
+              {hub.hasToken ? '허브 동기화' : '허브 연결'}
+            </button>
+          )}
+        </div>
+        {hub?.personal && <div style={S.dim}>개인 Vault 는 동기화가 없습니다. 내용이 이 컴퓨터를 떠나지 않습니다.</div>}
+      </section>
+
+      <section style={S.block}>
+        <div style={S.blockHead}>LLM CLI 설정</div>
         <p style={S.note}>
           설치 여부는 앱을 켤 때 한 번 봅니다. 방금 설치했다면 앱을 다시 켜야 목록에 뜹니다.
         </p>
@@ -103,10 +121,10 @@ export function CoreContextPanel({
   const dirty = CORE_CONTEXT_FIELDS.some((f) => draft[f.key] !== value[f.key]);
 
   return (
-    <Shell title="내 맥락" busy={busy} onClose={onClose}>
+    <Shell title="나의 핵심 맥락" busy={busy} onClose={onClose}>
       <p style={S.note}>
         LLM 이 매 호출에서 먼저 읽습니다. 같은 원본이라도 누가 왜 쌓는지 알면 고르는 것이
-        달라집니다. 금고의 <code style={S.code}>{CORE_CONTEXT_PATH}</code> 파일 하나가 정본이라
+        달라집니다. Vault 의 <code style={S.code}>{CORE_CONTEXT_PATH}</code> 파일 하나가 정본이라
         Obsidian 에서 바로 고쳐도 됩니다. <b>동기화는 이 파일을 올리지 않습니다</b> —
         CO 영역에서도 동료에게 가지 않습니다.
       </p>
@@ -145,11 +163,14 @@ export function CoreContextPanel({
 
 function Shell({
   title,
+  version,
   busy,
   onClose,
   children,
 }: {
   title: string;
+  /** 있으면 제목 옆에 붙는다. 판 번호는 물어볼 일이 있을 때 바로 보여야 한다 */
+  version?: string;
   busy: boolean;
   onClose: () => void;
   children: React.ReactNode;
@@ -158,7 +179,10 @@ function Shell({
     <div style={S.scrim} role="dialog" aria-label={title}>
       <div style={S.panel} className="enter">
         <header style={S.head}>
-          <div style={S.title}>{title}</div>
+          <div style={S.titleRow}>
+            <span style={S.title}>{title}</span>
+            {version && <span style={S.version}>앱 버전 v{version}</span>}
+          </div>
           <button aria-label="닫기" disabled={busy} onClick={onClose}>
             <Icon name="close" />
           </button>
@@ -219,14 +243,14 @@ const S = {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--s)',
     padding: 'var(--s)', borderBottom: '1px solid var(--border)',
   },
+  titleRow: { display: 'flex', alignItems: 'baseline', gap: 'var(--s)', minWidth: 0 },
   title: { fontWeight: 600 },
+  version: { fontSize: '0.8125rem', color: 'var(--fg-faint)', fontFamily: 'var(--mono)' },
   body: { overflowY: 'auto', padding: 'var(--s)' },
 
   block: { marginBottom: 20 },
-  blockHead: {
-    fontSize: '0.75rem', letterSpacing: '0.04em', color: 'var(--fg-faint)',
-    textTransform: 'uppercase', marginBottom: 6,
-  },
+  // 대문자 변환을 안 쓴다. 한글 머리말은 안 바뀌고 라틴 머리말만 소리쳐서 짝이 안 맞는다.
+  blockHead: { fontSize: '0.75rem', letterSpacing: '0.04em', color: 'var(--fg-faint)', marginBottom: 6 },
   row: { display: 'grid', gridTemplateColumns: '80px 1fr', gap: 'var(--s)', padding: '4px 0', fontSize: '0.875rem' },
   rowLabel: { color: 'var(--fg-muted)' },
   rowValue: { wordBreak: 'break-word' },

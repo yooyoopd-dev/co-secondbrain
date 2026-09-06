@@ -59,8 +59,8 @@ export class Store {
   #spend: SpendLog = EMPTY_LOG;
   /** 상한은 사용자가 넣어야 한다. 아직 설정 화면이 없어 기본값만 있다 (PROVIDER-ROUTING.md §5.2) */
   #limits: Limits = { 'claude-code': DEFAULT_MONTHLY_USD };
-  /** detect() 는 프로세스를 띄운다. 한 번만 한다 */
-  #available: ProviderId[] | null = null;
+  /** detect() 는 프로세스를 띄운다. 진행 중인 것을 붙들어 한 번만 돈다 */
+  #available: Promise<ProviderId[]> | null = null;
   /** 사용자가 설정에서 고정한 공급자. `null` 이면 작업 종류별 라우팅에 맡긴다 */
   #provider: ProviderId | null = null;
   /** 공급자 선택은 금고가 아니라 이 PC 의 것이다. 금고를 바꿔도 따라오지 않는다 */
@@ -272,19 +272,26 @@ export class Store {
     return planWork(this.#manifest, states);
   }
 
-  /** 설치·인증된 공급자. detect() 는 프로세스를 띄우므로 한 번만 본다. */
-  async available(): Promise<ProviderId[]> {
-    if (this.#available) return this.#available;
-    const found: ProviderId[] = [];
-    for (const id of ['claude-code', 'gemini'] as const) {
-      try {
-        if ((await createCli(id).detect()).found) found.push(id);
-      } catch {
-        // 어댑터가 없는 공급자는 건너뛴다
+  /**
+   * 설치·인증된 공급자. detect() 는 프로세스를 띄우므로 한 번만 본다.
+   *
+   * **결과가 아니라 진행 중인 약속을 붙든다.** 결과만 캐시하면 앱이 켜질 때 돌린 것이
+   * 끝나기 전에 설정 화면이 물어봤을 때 탐지가 처음부터 다시 돈다 — 실측 약 5초 동안
+   * 화면이 멈춘 것처럼 보였다.
+   */
+  available(): Promise<ProviderId[]> {
+    this.#available ??= (async () => {
+      const found: ProviderId[] = [];
+      for (const id of ['claude-code', 'gemini'] as const) {
+        try {
+          if ((await createCli(id).detect()).found) found.push(id);
+        } catch {
+          // 어댑터가 없는 공급자는 건너뛴다
+        }
       }
-    }
-    this.#available = found;
-    return found;
+      return found;
+    })();
+    return this.#available;
   }
 
   /* ---------- 설정 (ipc.ts AppSettings) ---------- */
@@ -579,7 +586,7 @@ export class Store {
    */
   async connectHub(url: string, token: string): Promise<{ ok: true; role: string } | { ok: false; error: string }> {
     const v = this.#require();
-    if (v.config.id === PERSONAL_ID) return { ok: false, error: '개인 금고는 허브에 붙이지 않습니다' };
+    if (v.config.id === PERSONAL_ID) return { ok: false, error: '개인 Vault 는 허브에 붙이지 않습니다' };
     if (!this.#tokens) return { ok: false, error: '토큰 보관소가 없습니다' };
     if (!this.#tokens.available()) return { ok: false, error: '이 시스템에서는 토큰을 안전하게 보관할 수 없습니다' };
 
@@ -664,7 +671,7 @@ export class Store {
   /** 허브 클라이언트를 만든다. 주소나 토큰이 없으면 이유를 문장으로 돌려준다. */
   async #hub(): Promise<{ ok: true; client: HubClient } | { ok: false; error: string }> {
     const v = this.#require();
-    if (v.config.id === PERSONAL_ID || !v.config.hub) return { ok: false, error: '개인 금고는 동기화하지 않습니다' };
+    if (v.config.id === PERSONAL_ID || !v.config.hub) return { ok: false, error: '개인 Vault 는 동기화하지 않습니다' };
     const token = await this.#tokens?.get(v.config.id);
     if (!token) return { ok: false, error: '허브 토큰이 없습니다. 다시 연결하십시오' };
     return { ok: true, client: hubClient({ url: v.config.hub, token }, this.#hubFetch) };

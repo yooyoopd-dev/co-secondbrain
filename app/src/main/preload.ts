@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('sb', {
   pickVault: (mode: 'open' | 'create') => ipcRenderer.invoke(IPC.pickVault, mode),
   currentVault: () => ipcRenderer.invoke(IPC.currentVault),
   closeVault: () => ipcRenderer.invoke(IPC.closeVault),
+  quit: () => ipcRenderer.invoke(IPC.quit),
   pickAndIngest: (classification: string) => ipcRenderer.invoke(IPC.pickAndIngest, classification),
   inbox: () => ipcRenderer.invoke(IPC.inbox),
   ingestInbox: (classification: string) => ipcRenderer.invoke(IPC.ingestInbox, classification),

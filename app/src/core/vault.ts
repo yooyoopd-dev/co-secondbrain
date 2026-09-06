@@ -185,7 +185,7 @@ export async function openVault(root: string): Promise<Vault> {
  * 백업될 수 있고 그러면 토큰이 같이 나간다. 토큰은 OS 자격 증명 저장소에만 둔다.
  */
 export async function setHub(vault: Vault, hub: string | null): Promise<Vault> {
-  if (hub !== null && vault.config.id === PERSONAL_ID) throw new Error('개인 금고는 허브에 붙이지 않습니다');
+  if (hub !== null && vault.config.id === PERSONAL_ID) throw new Error('개인 Vault 는 허브에 붙이지 않습니다');
   const config: VaultConfig = { ...vault.config, hub };
   await fs.writeFile(safeJoin(vault.root, CONFIG_PATH), JSON.stringify(config, null, 2), 'utf8');
   return { root: vault.root, config };

@@ -69,7 +69,7 @@ test('허브 주소는 설정에 남고 개인 금고는 거절한다', async ()
   assert.equal((await setHub(withHub, null)).config.hub, null);
 
   const personal = await createVault(await tmp(), { id: PERSONAL_ID, title: '개인 금고', hub: null });
-  await assert.rejects(() => setHub(personal, 'http://co-hub:8080'), /개인 금고/);
+  await assert.rejects(() => setHub(personal, 'http://co-hub:8080'), /개인 Vault/);
 });
 
 /* ---------------- 번호 접두 배치 (PLAN.md §3) ---------------- */

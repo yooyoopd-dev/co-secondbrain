@@ -68,13 +68,17 @@ const surface = await win.evaluate(() => Object.keys(window.sb ?? {}).sort());
 ok('window.sb 표면이 ipc.ts 와 같다', expected.length > 5 && JSON.stringify(surface) === JSON.stringify(expected), { surface, expected });
 ok('노출된 것 말고는 없다', await win.evaluate(() => typeof window.require === 'undefined' && typeof window.process === 'undefined'));
 
+// Electron 기본 메뉴(File/Edit/View/Window/Help)를 없앴다. View 메뉴의 새로 고침·개발자
+// 도구는 창 하나짜리 도구에 혼란만 준다.
+ok('기본 메뉴가 없다', (await app.evaluate(({ Menu }) => Menu.getApplicationMenu())) === null);
+
 // IPC 왕복 — Vault 를 안 열었으니 null 과 빈 배열이 정답이다
 ok('IPC currentVault', (await win.evaluate(() => window.sb.currentVault())) === null);
 ok('IPC search', JSON.stringify(await win.evaluate(() => window.sb.search('없는말'))) === '[]');
 
 // 설정 — 금고를 안 열어도 열려야 한다. 못 여는 것 자체가 설정 문제일 때가 있다.
 const st = await win.evaluate(() => window.sb.settings());
-ok('금고 없이도 설정이 열린다', st.vaultRoot === null && /^\d+\.\d+\.\d+/.test(st.version), st);
+ok('Vault 없이도 설정이 열린다', st.vaultRoot === null && /^\d+\.\d+\.\d+/.test(st.version), st);
 ok('설정이 공급자 셋을 준다', st.providers.length === 3 && st.providers.every((p) => typeof p.installed === 'boolean'), st.providers);
 
 // 공급자 고정이 왕복하는가. 끝나고 자동으로 되돌린다.
