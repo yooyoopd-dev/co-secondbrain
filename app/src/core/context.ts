@@ -1,6 +1,6 @@
 // 나의 기준 맥락 — LLM 이 "누가 왜 무엇을 위해" 쌓는 위키인지 알게 하는 세 문항.
 //
-// **금고 안 마크다운 파일 하나가 정본이다.** 앱 설정에 넣지 않은 이유가 두 가지다.
+// **Vault 안 마크다운 파일 하나가 정본이다.** 앱 설정에 넣지 않은 이유가 두 가지다.
 // 하나는 Obsidian 으로 열어 그대로 고칠 수 있어야 해서고, 하나는 이 내용이 프롬프트
 // 접두사에 들어가기 때문이다 — 접두사는 배치 내내 같은 바이트여야 캐시가 산다
 // (M2-PLAN.md §2.1). 파일이 안 바뀌면 바이트도 안 바뀐다.
@@ -25,7 +25,7 @@ export const EMPTY_CORE_CONTEXT: CoreContext = { who: '', why: '', output: '' };
 /** 문항. 순서가 곧 파일의 절 순서이고 화면의 칸 순서다. */
 export const CORE_CONTEXT_FIELDS = [
   { key: 'who', heading: '나는 누구인가', label: 'Who am I?', hint: '직무 · 담당 · 이 문서들을 다루는 자리' },
-  { key: 'why', heading: '왜 기록하는가', label: 'Why record this?', hint: '이 금고로 무엇을 하려는가' },
+  { key: 'why', heading: '왜 기록하는가', label: 'Why record this?', hint: '이 Vault 로 무엇을 하려는가' },
   { key: 'output', heading: '어떤 산출물을 원하는가', label: 'What output do you want?', hint: '보고서 · 회의 준비 · 근거 추적 등' },
 ] as const satisfies readonly { key: keyof CoreContext; heading: string; label: string; hint: string }[];
 

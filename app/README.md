@@ -1,6 +1,6 @@
 # app — co-secondbrain (M1)
 
-개인 금고. **LLM 을 쓰지 않는다** — 텍스트·구조 추출과 검색이 전부 로컬이다.
+개인 Vault. **LLM 을 쓰지 않는다** — 텍스트·구조 추출과 검색이 전부 로컬이다.
 
 ```bash
 npm install

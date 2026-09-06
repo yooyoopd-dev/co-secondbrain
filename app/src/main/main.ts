@@ -42,7 +42,7 @@ const store = new Store({
   // 토큰은 Vault 폴더가 아니라 사용자 데이터 폴더에 암호문으로 둔다 (creds.ts)
   tokens: credStore(path.join(app.getPath('userData'), 'hub-creds.json'), cipher),
   spendFile: path.join(app.getPath('userData'), 'spend.json'),
-  // 공급자 선택은 금고가 아니라 이 PC 의 것이다
+  // 공급자 선택은 Vault 가 아니라 이 PC 의 것이다
   prefsFile: path.join(app.getPath('userData'), 'prefs.json'),
   // CLI 가 MCP 서버를 서브프로세스로 띄운다. 패키징본에는 node 가 없으므로
   // Electron 자신을 ELECTRON_RUN_AS_NODE 로 돌린다 (PLAN.md §7.2).
@@ -189,7 +189,7 @@ function registerIpc(): void {
     if (!vault) return null;
     const r = await dialog.showSaveDialog({
       title: '슬라이드 내보내기',
-      // 금고의 `03_OUTPUT/` 에서 시작한다. 다른 곳을 고를 수는 있다
+      // Vault 의 `03_OUTPUT/` 에서 시작한다. 다른 곳을 고를 수는 있다
       defaultPath: path.join(vault.root, OUTPUT_DIR, `${vault.config.title}.md`),
       filters: [{ name: 'Marp 마크다운', extensions: ['md'] }],
     });
@@ -200,7 +200,7 @@ function registerIpc(): void {
 
   /* 오류 기록 — 무엇이 실패했는지 사람이 통째로 옮길 수 있어야 한다 */
 
-  /* 설정 — 금고 경로는 여기서만 나간다. 오류 기록에는 안 들어간다 */
+  /* 설정 — Vault 경로는 여기서만 나간다. 오류 기록에는 안 들어간다 */
 
   handle(IPC.settings, () => store.settings(app.getVersion()));
   handle(IPC.setProvider, (_e, id: ProviderId | null) => store.setProvider(id));
@@ -232,7 +232,7 @@ function registerIpc(): void {
   });
 }
 
-/** 기록 머리말. 금고 경로와 이름은 넣지 않는다 — 열렸는지만 적는다 */
+/** 기록 머리말. Vault 경로와 이름은 넣지 않는다 — 열렸는지만 적는다 */
 function environment(): Record<string, string> {
   return {
     앱: app.getVersion(),

@@ -63,7 +63,7 @@ export default function App() {
   // 넣을 때 고르는 열람 등급. 기본은 사내다 — 공개를 기본으로 두면 실수가 유출이 된다
   const [classification, setClassification] = useState<Classification>(DEFAULT_CLASSIFICATION);
   const [inbox, setInbox] = useState<InboxItem[]>([]);
-  // 설정과 내 맥락. 정본은 main(과 금고의 파일)이고 화면은 사본을 그린다
+  // 설정과 내 맥락. 정본은 main(과 Vault 의 파일)이고 화면은 사본을 그린다
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [core, setCore] = useState<CoreContext>(EMPTY_CORE_CONTEXT);
   const [coreOpen, setCoreOpen] = useState(false);
@@ -78,7 +78,7 @@ export default function App() {
     setErrors(s.errors);
   }, []);
 
-  // 금고를 열기 전에 난 오류도 세어 둔다. 첫 화면에서 사유를 볼 수 있어야 한다.
+  // Vault 를 열기 전에 난 오류도 세어 둔다. 첫 화면에서 사유를 볼 수 있어야 한다.
   useEffect(() => {
     void pullLogs();
   }, [pullLogs]);
@@ -328,7 +328,7 @@ export default function App() {
   };
 
   /**
-   * 금고를 닫고 첫 화면으로 돌아간다. **검토 대기가 있으면 먼저 묻는다** —
+   * Vault 를 닫고 첫 화면으로 돌아간다. **검토 대기가 있으면 먼저 묻는다** —
    * 승인 전 변경안은 main 의 메모리에만 있어서 닫는 순간 사라진다.
    */
   const closeVault = async () => {
@@ -391,7 +391,7 @@ export default function App() {
     },
   };
 
-  // 첫 화면에서도 열 수 있어야 한다. 금고를 못 여는 것 자체가 흔한 실패다.
+  // 첫 화면에서도 열 수 있어야 한다. Vault 를 못 여는 것 자체가 흔한 실패다.
   const debugOverlay = debugOpen && (
     <DebugPanel
       entries={logs}
@@ -483,11 +483,6 @@ export default function App() {
           hub={hub}
           busy={busy}
           onProvider={(id) => void pickProvider(id)}
-          onOpenVault={() => {
-            setSettings(null);
-            void openVault('open');
-          }}
-          onCloseVault={() => void closeVault()}
           onCore={() => {
             setSettings(null);
             void openCore();
@@ -608,7 +603,7 @@ function Rail({
   errors: number;
   onDebug: () => void;
 }) {
-  // 개인 금고와 CO 영역을 색·아이콘·접두로 구분한다 (DESIGN-SYSTEM.md)
+  // 개인 Vault 와 CO 영역을 색·아이콘·접두로 구분한다 (DESIGN-SYSTEM.md)
   const isCo = vault.hub !== null;
   return (
     <aside style={{ ...S.rail, background: isCo ? 'var(--bg-surface)' : 'var(--bg-canvas)' }}>

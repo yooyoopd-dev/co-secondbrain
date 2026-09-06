@@ -78,7 +78,7 @@ async function writePage(root: string, body: string): Promise<void> {
 
 const read = (root: string) => fs.readFile(path.join(root, REL), 'utf8');
 
-test('개인 금고는 허브에 붙지 않는다', async () => {
+test('개인 Vault 는 허브에 붙지 않는다', async () => {
   const { s } = await opened('personal');
   const st = await s.hubStatus();
   assert.equal(st.personal, true);
@@ -132,7 +132,7 @@ test('연결하고 올리고 받는다', async () => {
   assert.equal(A.tokens.saved['ACME'], token['hong@corp']);
   assert.equal((await A.s.hubStatus()).hub, base, '허브 주소가 설정에 남는다');
 
-  // 토큰은 금고 폴더 어디에도 없어야 한다
+  // 토큰은 Vault 폴더 어디에도 없어야 한다
   const cfg = await fs.readFile(path.join(A.root, '.sb/config.json'), 'utf8');
   assert.ok(!cfg.includes(token['hong@corp']!), cfg);
 
@@ -148,7 +148,7 @@ test('연결하고 올리고 받는다', async () => {
   await B.s.connectHub(base, token['kim@corp']!);
   const down = await B.s.syncNow();
   assert.equal(down.ok === true ? down.report.pulled.length : -1, 1);
-  assert.equal(await read(B.root), await read(A.root), '두 금고의 내용이 같다');
+  assert.equal(await read(B.root), await read(A.root), '두 Vault 의 내용이 같다');
   A.s.close();
   B.s.close();
 });

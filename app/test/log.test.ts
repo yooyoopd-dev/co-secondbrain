@@ -137,7 +137,7 @@ test('머리말과 본문이 붙고 상세는 들여쓴다', () => {
 });
 
 test('머리말도 비식별 처리를 거친다', () => {
-  const out = formatLog([], { 금고: 'C:\\Users\\hong\\vault' });
+  const out = formatLog([], { Vault: 'C:\\Users\\hong\\vault' });
   assert.ok(!out.includes('hong'), out);
 });
 

@@ -1,12 +1,12 @@
 // 오프라인 편집 후 재접속. docs/ROADMAP.md 16번 완료 기준
 //
-// **진짜 허브를 띄우고 진짜 금고 둘로** 돌린다. FakeHub 로 통과한 것이 실제 HTTP 와
+// **진짜 허브를 띄우고 진짜 Vault 둘로** 돌린다. FakeHub 로 통과한 것이 실제 HTTP 와
 // SQLite 위에서도 되는지 보는 것이 이 스파이크의 목적이다.
 //
 // 정답을 알고 돌린다 (CLAUDE.md §9):
 //   - 서로 다른 줄을 고치면 병합은 깨끗해야 하고 두 고침이 다 남아야 한다
 //   - 같은 줄을 고치면 반드시 충돌로 잡혀야 한다. 자동으로 하나를 고르면 실패다
-//   - 마지막에 두 금고의 파일이 바이트까지 같아야 한다
+//   - 마지막에 두 Vault 의 파일이 바이트까지 같아야 한다
 //
 //   node --experimental-strip-types spikes/sync/offline.ts
 import fs from 'node:fs/promises';
@@ -52,7 +52,7 @@ for (const user of ['hong@corp', 'kim@corp']) {
   tokens.push((await admin('/v1/admin/tokens', { userId: user })).token as string);
 }
 
-/* ---------------- 금고 둘 ---------------- */
+/* ---------------- Vault 둘 ---------------- */
 
 const vaultAt = async (tag: string): Promise<Vault> =>
   createVault(await fs.mkdtemp(path.join(os.tmpdir(), `sync-${tag}-`)), { id: 'ACME', title: 'ACME', hub: base });
@@ -79,7 +79,7 @@ const up = await sync(A, ca);
 check(up.pushed.length === 1 && up.conflicts.length === 0, 'A 가 페이지를 올렸다');
 const down = await sync(B, cb);
 check(down.pulled.length === 1, 'B 가 페이지를 받았다');
-check((await read(A)) === (await read(B)), '두 금고의 내용이 같다');
+check((await read(A)) === (await read(B)), '두 Vault 의 내용이 같다');
 
 /* ---------------- 2. 오프라인 ---------------- */
 
@@ -107,7 +107,7 @@ check((await read(B)).includes('A 가 고침') === false, '충돌 동안 디스�
 const r1 = await resolveConflict(B, cb, c1, c1.merged.text);
 check(r1.ok === true, '병합 결과를 올렸다');
 await sync(A, ca);
-check((await read(A)) === (await read(B)), '두 금고가 다시 같아졌다');
+check((await read(A)) === (await read(B)), '두 Vault 가 다시 같아졌다');
 
 /* ---------------- 4. 같은 줄 → 사람 판단 ---------------- */
 
@@ -131,7 +131,7 @@ check(r2.ok === true, '사람이 고른 결과는 올라갔다');
 
 const last = await sync(A, ca);
 check(last.pulled.length === 1, 'A 가 합의본을 받았다');
-check((await read(A)) === (await read(B)), '두 금고가 같다');
+check((await read(A)) === (await read(B)), '두 Vault 가 같다');
 
 /* ---------------- 5. 손실 확인 ---------------- */
 

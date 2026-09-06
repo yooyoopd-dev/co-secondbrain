@@ -12,7 +12,7 @@ const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'sb-store-'));
 async function opened() {
   const root = await tmp();
   const s = new Store();
-  await s.open(root, { id: 'personal', title: '개인 금고' });
+  await s.open(root, { id: 'personal', title: '개인 Vault' });
   return { s, root };
 }
 
@@ -108,7 +108,7 @@ test('원본 전문을 앵커째로 되읽을 수 있다 (원문 뷰어용)', as
 
 /* ---------------- 설정 · 내 맥락 ---------------- */
 
-test('설정은 금고 경로와 판을 준다. 안 열었으면 null 이다', async () => {
+test('설정은 Vault 경로와 판을 준다. 안 열었으면 null 이다', async () => {
   const s = new Store();
   const before = await s.settings('9.9.9');
   assert.equal(before.version, '9.9.9');
@@ -116,15 +116,15 @@ test('설정은 금고 경로와 판을 준다. 안 열었으면 null 이다', a
   assert.equal(before.personal, null);
 
   const root = await tmp();
-  await s.open(root, { id: 'personal', title: '개인 금고' });
+  await s.open(root, { id: 'personal', title: '개인 Vault' });
   const after = await s.settings('9.9.9');
   assert.equal(after.vaultRoot, root);
-  assert.equal(after.vaultTitle, '개인 금고');
+  assert.equal(after.vaultTitle, '개인 Vault');
   assert.equal(after.personal, true);
   assert.deepEqual(after.providers.map((p) => p.id), ['claude-code', 'gemini', 'codex']);
 });
 
-test('금고를 닫으면 설정에서도 사라진다', async () => {
+test('Vault 를 닫으면 설정에서도 사라진다', async () => {
   const { s } = await opened();
   s.close();
   const st = await s.settings('9.9.9');
@@ -158,7 +158,7 @@ test('설정 파일이 깨져 있으면 자동으로 돌아간다', async () => 
   assert.equal((await s.settings('0')).provider, null);
 });
 
-test('내 맥락은 안 적었으면 빈 것이고, 적으면 금고 안 파일이 된다', async () => {
+test('내 맥락은 안 적었으면 빈 것이고, 적으면 Vault 안 파일이 된다', async () => {
   const { s, root } = await opened();
   assert.deepEqual(await s.coreContext(), { who: '', why: '', output: '' });
 

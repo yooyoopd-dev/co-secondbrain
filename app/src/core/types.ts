@@ -50,7 +50,7 @@ export type SourceKind = 'docx' | 'xlsx' | 'csv' | 'pptx' | 'pdf' | 'eml' | 'msg
  * 2단계(공개/기밀)로는 실무에서 곧 전부 기밀이 된다. 애매하면 높은 쪽을 고르기
  * 때문이고, 그러면 필드가 정보를 담지 않는다. 그래서 네 단계다.
  *
- * **이 필드는 표시이지 강제가 아니다.** 개인 금고와 CO 공간을 물리적으로 가르는 것이
+ * **이 필드는 표시이지 강제가 아니다.** 개인 Vault 와 CO 공간을 물리적으로 가르는 것이
  * 유출을 막는 장치이고(PLAN.md §3), 이 등급은 CO 공간 안에서 열람 범위를 나눈다.
  */
 export const CLASSIFICATIONS = ['public', 'internal', 'confidential', 'restricted'] as const;

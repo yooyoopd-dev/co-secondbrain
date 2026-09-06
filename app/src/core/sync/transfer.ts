@@ -14,12 +14,12 @@ import type { HubClient } from './client.ts';
 export interface TransferPlan {
   changeSet: ChangeSet;
   /**
-   * 옮기는 페이지가 인용한 앵커. 대상 금고에는 원본 파일이 없어서 관문 5 가 전부 막는다.
-   * **이 맵은 원본 공간의 주장을 그대로 옮긴 것이고, 대상 금고에서 검증되지 않는다.**
+   * 옮기는 페이지가 인용한 앵커. 대상 Vault 에는 원본 파일이 없어서 관문 5 가 전부 막는다.
+   * **이 맵은 원본 공간의 주장을 그대로 옮긴 것이고, 대상 Vault 에서 검증되지 않는다.**
    * 부르는 쪽이 로컬 앵커와 합쳐 `buildReview` 에 넘긴다.
    */
   attestedAnchors: Map<string, Set<string>>;
-  /** 대상 금고에 없는 wikilink. 끊긴 링크로 남는다 */
+  /** 대상 Vault 에 없는 wikilink. 끊긴 링크로 남는다 */
   danglingLinks: string[];
 }
 
@@ -35,7 +35,7 @@ export function parseCoUri(uri: string): { spaceId: string; slug: string; versio
   return { spaceId: m[1]!, slug: m[2]!, version: m[3] === undefined ? null : Number(m[3]) };
 }
 
-/** 개인 → CO. 페이지 전문이 검토 화면에 뜨고, 사람이 승인해야 CO 금고에 들어간다. */
+/** 개인 → CO. 페이지 전문이 검토 화면에 뜨고, 사람이 승인해야 CO Vault 에 들어간다. */
 export async function contributePlan(from: Vault, relPath: string, to: Vault): Promise<TransferPlan> {
   if (!to.config.hub) throw new Error('대상이 CO 공간이 아닙니다');
   const page = parsePage(await fs.readFile(safeJoin(from.root, relPath), 'utf8'));
@@ -45,7 +45,7 @@ export async function contributePlan(from: Vault, relPath: string, to: Vault): P
   return {
     changeSet: {
       summary: `${from.config.title} 에서 기여: ${page.front.title}`,
-      discussion: '개인 금고의 내용이 CO 공간으로 나갑니다. 전문을 확인하고 승인하십시오.',
+      discussion: '개인 Vault 의 내용이 CO 공간으로 나갑니다. 전문을 확인하고 승인하십시오.',
       ops: [
         baseHash === null
           ? { op: 'create', path: relPath, baseHash: null, content }
@@ -103,7 +103,7 @@ export interface Adoption {
 }
 
 /**
- * 개인 금고의 채택본이 낡았는지 본다 (PLAN.md §4 "채택본 낡음 배지").
+ * 개인 Vault 의 채택본이 낡았는지 본다 (PLAN.md §4 "채택본 낡음 배지").
  * 허브에 못 닿으면 `currentVersion` 이 null 로 남고 배지는 뜨지 않는다.
  */
 export async function staleAdoptions(personal: Vault, client: HubClient | null): Promise<Adoption[]> {

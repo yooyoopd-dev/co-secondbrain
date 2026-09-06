@@ -139,13 +139,13 @@ class FakeHub implements HubClient {
   }
 }
 
-/* ---------------- 금고 도우미 ---------------- */
+/* ---------------- Vault 도우미 ---------------- */
 
 const coVault = async (): Promise<Vault> =>
   createVault(await fs.mkdtemp(path.join(os.tmpdir(), 'sb-sync-co-')), { id: 'ACME', title: 'ACME', hub: 'http://hub' });
 
 const personalVault = async (): Promise<Vault> =>
-  createVault(await fs.mkdtemp(path.join(os.tmpdir(), 'sb-sync-me-')), { id: 'personal', title: '내 금고', hub: null });
+  createVault(await fs.mkdtemp(path.join(os.tmpdir(), 'sb-sync-me-')), { id: 'personal', title: '내 Vault', hub: null });
 
 const md = (slug: string, body: string): string => {
   const page = emptyPage(slug, 'entity', slug);
@@ -329,7 +329,7 @@ test('병합 결과가 페이지 형식이 아니면 거절한다', async () => 
 
 /* ---------------- 기여 · 채택 ---------------- */
 
-test('기여는 ChangeSet 만 만들고 대상 금고에 쓰지 않는다', async () => {
+test('기여는 ChangeSet 만 만들고 대상 Vault 에 쓰지 않는다', async () => {
   const me = await personalVault();
   const co = await coVault();
   await put(me, REL, md('acme-corp', '개인 메모'));

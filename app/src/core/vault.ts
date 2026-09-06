@@ -1,4 +1,4 @@
-// Vault — 개인 금고 / CO 영역의 디스크 구조. PLAN.md §3
+// Vault — 개인용과 CO 영역의 디스크 구조. PLAN.md §3
 //
 // 원칙: **디스크가 진실이다.** SQLite 는 재생성 가능한 캐시일 뿐이고,
 // 앱을 지워도 지식은 마크다운으로 남는다.
@@ -7,7 +7,7 @@ import path from 'node:path';
 import { safeJoin } from './security.ts';
 
 /**
- * 금고의 폴더. **Obsidian 과 병행해서 쓰므로 사람이 여는 것에만 번호를 붙인다** —
+ * Vault 의 폴더. **Obsidian 과 병행해서 쓰므로 사람이 여는 것에만 번호를 붙인다** —
  * 번호가 파일 목록의 순서를 고정하고, 그 순서가 곧 작업 순서다
  * (넣는다 → 원본 → 노트 → 내보낸다).
  *
@@ -55,14 +55,14 @@ export const OUTPUT_DIR = '03_OUTPUT';
 /** 규약·분류 파일 */
 export const TEMPLATES_DIR = '09_TEMPLATES';
 
-/** 개인 금고의 공간 id. 이 금고는 허브에 붙지 않는다 (PLAN.md §3) */
+/** 개인 Vault 의 공간 id. 이 Vault 는 허브에 붙지 않는다 (PLAN.md §3) */
 export const PERSONAL_ID = 'personal';
 
 export interface VaultConfig {
   /** 공간 id — `personal` 또는 프로젝트명 */
   id: string;
   title: string;
-  /** CO 영역이면 허브 URL. 개인 금고는 null */
+  /** CO 영역이면 허브 URL. 개인 Vault 는 null */
   hub: string | null;
   createdAt: string;
 }
@@ -181,7 +181,7 @@ export async function openVault(root: string): Promise<Vault> {
 }
 
 /**
- * 허브 주소를 바꿔 적는다. **토큰은 여기 넣지 않는다** — 금고 폴더는 통째로 복사되거나
+ * 허브 주소를 바꿔 적는다. **토큰은 여기 넣지 않는다** — Vault 폴더는 통째로 복사되거나
  * 백업될 수 있고 그러면 토큰이 같이 나간다. 토큰은 OS 자격 증명 저장소에만 둔다.
  */
 export async function setHub(vault: Vault, hub: string | null): Promise<Vault> {

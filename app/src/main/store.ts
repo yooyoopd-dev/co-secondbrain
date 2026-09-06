@@ -63,7 +63,7 @@ export class Store {
   #available: Promise<ProviderId[]> | null = null;
   /** 사용자가 설정에서 고정한 공급자. `null` 이면 작업 종류별 라우팅에 맡긴다 */
   #provider: ProviderId | null = null;
-  /** 공급자 선택은 금고가 아니라 이 PC 의 것이다. 금고를 바꿔도 따라오지 않는다 */
+  /** 공급자 선택은 Vault 가 아니라 이 PC 의 것이다. Vault 를 바꿔도 따라오지 않는다 */
   readonly #prefsFile: string | null;
 
   /** MCP 서버를 어떻게 띄울지. 개발과 패키징본이 달라 main 이 정한다 */
@@ -297,7 +297,7 @@ export class Store {
   /* ---------- 설정 (ipc.ts AppSettings) ---------- */
 
   /**
-   * 설정 화면 한 벌. **금고 경로는 여기서만 나간다** — 오류 기록에는 안 넣는다
+   * 설정 화면 한 벌. **Vault 경로는 여기서만 나간다** — 오류 기록에는 안 넣는다
    * (main.ts `environment`). 사람이 직접 보는 화면과 통째로 복사되는 기록은 다르다.
    */
   async settings(version: string): Promise<AppSettings> {

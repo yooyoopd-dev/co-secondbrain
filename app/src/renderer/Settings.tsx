@@ -13,8 +13,6 @@ export function SettingsPanel({
   hub,
   busy,
   onProvider,
-  onOpenVault,
-  onCloseVault,
   onCore,
   onHub,
   onClose,
@@ -24,8 +22,6 @@ export function SettingsPanel({
   hub: HubStatus | null;
   busy: boolean;
   onProvider: (id: ProviderId | null) => void;
-  onOpenVault: () => void;
-  onCloseVault: () => void;
   onCore: () => void;
   onHub: () => void;
   onClose: () => void;
@@ -44,14 +40,6 @@ export function SettingsPanel({
             <Row label="폴더" value={settings.vaultRoot} mono />
           </>
         )}
-        <div style={S.rowButtons}>
-          <button disabled={busy} onClick={onOpenVault}>
-            다른 Vault 열기
-          </button>
-          <button disabled={busy || settings.vaultRoot === null} onClick={onCloseVault}>
-            Vault선택
-          </button>
-        </div>
       </section>
 
       <section style={S.block}>

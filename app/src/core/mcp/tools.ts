@@ -12,7 +12,7 @@ import type { ToolDef } from './server.ts';
 
 const MAX_HITS = 20;
 
-/** 노출 경로는 `02_NOTES/` 아래 마크다운뿐이다. 이걸 안 막으면 금고 전체가 새 나간다. */
+/** 노출 경로는 `02_NOTES/` 아래 마크다운뿐이다. 이걸 안 막으면 Vault 전체가 새 나간다. */
 const READABLE = /^02_NOTES\/[a-z0-9가-힣/-]+\.md$/;
 
 function line(e: WikiEntry): string {

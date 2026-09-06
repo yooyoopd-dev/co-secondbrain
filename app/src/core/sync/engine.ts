@@ -103,7 +103,7 @@ export function pendingChanges(state: SyncState, local: ReadonlyMap<string, Loca
  */
 export async function sync(vault: Vault, client: HubClient): Promise<SyncReport> {
   const spaceId = vault.config.id;
-  if (!vault.config.hub) throw new Error('개인 금고는 동기화하지 않습니다');
+  if (!vault.config.hub) throw new Error('개인 Vault 는 동기화하지 않습니다');
 
   const state = await readState(vault);
   const scan = await scanLocal(vault);

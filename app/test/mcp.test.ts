@@ -168,7 +168,7 @@ test('get_page — 전문을 돌려주고 없는 페이지는 던진다', async 
   await assert.rejects(() => call(v, 'get_page', { path: '02_NOTES/entities/없음.md' }), /없는 페이지/);
 });
 
-test('get_page — wiki 밖은 못 읽는다. 이걸 안 막으면 금고 전체가 샌다', async () => {
+test('get_page — wiki 밖은 못 읽는다. 이걸 안 막으면 Vault 전체가 샌다', async () => {
   const v = await wiki();
   for (const bad of ['../../etc/passwd', '.sb/config.json', 'sources/킥오프.pptx', '/etc/passwd', '02_NOTES/../.sb/config.json']) {
     await assert.rejects(() => call(v, 'get_page', { path: bad }), /읽을 수 없는 경로/, bad);

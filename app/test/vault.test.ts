@@ -9,7 +9,7 @@ const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'sb-'));
 
 test('Vault 를 만들면 구조가 전부 생긴다', async () => {
   const root = await tmp();
-  const v = await createVault(root, { id: 'personal', title: '개인 금고', hub: null });
+  const v = await createVault(root, { id: 'personal', title: '개인 Vault', hub: null });
   for (const dir of VAULT_DIRS) {
     assert.ok((await fs.stat(path.join(root, dir))).isDirectory(), `${dir} 없음`);
   }
@@ -60,7 +60,7 @@ test('log.md 는 grep 가능한 접두사 형식이다', async () => {
   assert.ok(entries[0]!.includes('ingest'));
 });
 
-test('허브 주소는 설정에 남고 개인 금고는 거절한다', async () => {
+test('허브 주소는 설정에 남고 개인 Vault 는 거절한다', async () => {
   const root = await tmp();
   const v = await createVault(root, { id: 'ACME', title: 'ACME', hub: null });
   const withHub = await setHub(v, 'http://co-hub:8080');
@@ -68,7 +68,7 @@ test('허브 주소는 설정에 남고 개인 금고는 거절한다', async ()
   assert.equal((await openVault(root)).config.hub, 'http://co-hub:8080', '디스크에 남는다');
   assert.equal((await setHub(withHub, null)).config.hub, null);
 
-  const personal = await createVault(await tmp(), { id: PERSONAL_ID, title: '개인 금고', hub: null });
+  const personal = await createVault(await tmp(), { id: PERSONAL_ID, title: '개인 Vault', hub: null });
   await assert.rejects(() => setHub(personal, 'http://co-hub:8080'), /개인 Vault/);
 });
 
@@ -76,7 +76,7 @@ test('허브 주소는 설정에 남고 개인 금고는 거절한다', async ()
 
 test('사람이 여는 폴더에만 번호가 붙는다', async () => {
   const root = await tmp();
-  await createVault(root, { id: 'personal', title: '개인 금고', hub: null });
+  await createVault(root, { id: 'personal', title: '개인 Vault', hub: null });
   const top = (await fs.readdir(root, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name).sort();
   // Obsidian 파일 목록에 뜨는 것은 이 다섯뿐이다. 나머지는 `.sb/` 아래로 내렸다.
   assert.deepEqual(top, ['.sb', '00_INBOX', '01_SOURCES', '02_NOTES', '03_OUTPUT', '09_TEMPLATES']);
@@ -97,7 +97,7 @@ test('앱이 만드는 것은 전부 .sb/ 아래다', async () => {
 
 test('규약이 쓸 수 있는 경로를 알려 준다', async () => {
   const root = await tmp();
-  await createVault(root, { id: 'personal', title: '개인 금고', hub: null });
+  await createVault(root, { id: 'personal', title: '개인 Vault', hub: null });
   const md = await fs.readFile(path.join(root, '09_TEMPLATES/AGENTS.md'), 'utf8');
   assert.match(md, /02_NOTES\/\{sources,entities,concepts,synthesis\}/);
   assert.match(md, /00_INBOX/);

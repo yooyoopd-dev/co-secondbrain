@@ -668,7 +668,7 @@ Cannot convert argument to a ByteString because the character at index 0 has a v
 ## 16. 동기화 클라이언트 (ROADMAP 16번)
 
 `app/src/core/sync/` — 허브 클라이언트 · 3-way 병합 · 동기화 엔진 · 기여/채택. 검증은
-`spikes/sync/offline.ts` 가 **진짜 허브와 진짜 금고 둘**로 돌린다.
+`spikes/sync/offline.ts` 가 **진짜 허브와 진짜 Vault 둘**로 돌린다.
 
 ### 16.1 오프라인 편집 후 재접속 — 24/24
 
@@ -678,9 +678,9 @@ Cannot convert argument to a ByteString because the character at index 0 has a v
 | 서로 다른 줄을 고침 | 409 → 병합 깨끗함. 두 고침이 모두 남음 |
 | 같은 줄을 다르게 고침 | 409 → 충돌 표시. 자동으로 고르지 않음 |
 | 충돌 표시가 남은 채 올리기 | 거절 |
-| 사람이 고른 결과 | 올라가고 반대쪽 금고까지 같아짐 |
+| 사람이 고른 결과 | 올라가고 반대쪽 Vault 까지 같아짐 |
 
-최종적으로 두 금고의 파일이 바이트까지 같고 세 고침(A 의 첫 줄 · B 의 오프라인 편집 ·
+최종적으로 두 Vault 의 파일이 바이트까지 같고 세 고침(A 의 첫 줄 · B 의 오프라인 편집 ·
 합의본)이 모두 남았다. 허브 판본 기록 5개.
 
 ### 16.2 보류 큐 파일을 없앴다
@@ -700,11 +700,11 @@ diff.ts 를 고쳐 두 용도를 겸하게 만들면 승인 화면의 diff 가 �
 `pull` 이 원격 `path` 를 그대로 쓰면 `../../` 로 위키 밖에 쓸 수 있다. `PAGE_PATH_RE` 로
 다시 걸러 낸다. 테스트가 이 경로를 막는지 확인한다.
 
-### 16.5 옮긴 페이지의 앵커는 대상 금고에서 검증되지 않는다
+### 16.5 옮긴 페이지의 앵커는 대상 Vault 에서 검증되지 않는다
 
 기여·채택은 페이지만 옮기고 원본 파일은 안 옮긴다. 그래서 옮긴 페이지의 인용은 대상
-금고의 관문 5 를 통과하지 못한다. `TransferPlan.attestedAnchors` 가 원본 공간의 주장을
-그대로 담아 오고 부르는 쪽이 로컬 앵커와 합쳐 넘긴다. **이 값은 대상 금고에서 검증되지
+Vault 의 관문 5 를 통과하지 못한다. `TransferPlan.attestedAnchors` 가 원본 공간의 주장을
+그대로 담아 오고 부르는 쪽이 로컬 앵커와 합쳐 넘긴다. **이 값은 대상 Vault 에서 검증되지
 않는다.** blob 동기화가 생기면 다시 봐야 한다.
 
 ### 16.6 아직 없는 것
@@ -715,9 +715,9 @@ diff.ts 를 고쳐 두 용도를 겸하게 만들면 승인 화면의 diff 가 �
 
 16번이 남겨 둔 두 가지를 붙였다. 토큰 보관과 3-way 병합 화면이다.
 
-### 17.1 토큰은 금고 폴더에 두지 않는다
+### 17.1 토큰은 Vault 폴더에 두지 않는다
 
-금고 폴더는 통째로 복사되고 백업된다. `.sb/config.json` 에 토큰을 적으면 그 복사본마다
+Vault 폴더는 통째로 복사되고 백업된다. `.sb/config.json` 에 토큰을 적으면 그 복사본마다
 사내 허브 자격 증명이 딸려 나간다. 그래서 설정 파일에는 **허브 주소만** 적고 토큰은
 사용자 데이터 폴더에 암호문으로 둔다 (`app/src/main/creds.ts`).
 
@@ -759,8 +759,8 @@ Electron `safeStorage` 는 Windows 에서 DPAPI 를, macOS 에서 Keychain 을 �
 ### 17.4 얕은 복사 하나가 토큰을 샐 뻔했다
 
 `creds.ts` 의 첫 판은 빈 자격 증명 파일을 상수로 두고 `{ ...EMPTY }` 로 복사했다. 겉만
-복사되므로 안쪽 `tokens` 객체는 모든 호출이 같은 것을 공유한다. 한 금고에 저장한 토큰이
-다른 금고의 조회에 그대로 나왔다.
+복사되므로 안쪽 `tokens` 객체는 모든 호출이 같은 것을 공유한다. 한 Vault 에 저장한 토큰이
+다른 Vault 의 조회에 그대로 나왔다.
 
 `app/test/creds.test.ts` 의 "깨진 파일은 빈 것으로 본다" 가 잡았다. 매번 새 객체를 만들도록
 고쳤다. 이 검사는 원래 파일 복구를 보려던 것이었고 토큰 유출은 곁가지로 걸렸다.
@@ -812,7 +812,7 @@ node --experimental-strip-types spikes/sync/local-hub.ts serve
 node --experimental-strip-types spikes/sync/local-hub.ts edit acme-corp
 ```
 
-금고 폴더 이름이 공간 id 가 되므로 `serve` 가 찍는 공간 이름과 같게 만들어야 한다.
+Vault 폴더 이름이 공간 id 가 되므로 `serve` 가 찍는 공간 이름과 같게 만들어야 한다.
 페이지는 LLM 없이 손으로 써도 된다. front-matter 에 `id` `type` `title` 세 개만 있으면
 `parsePage` 가 받는다. 메모장으로 저장할 때 인코딩은 BOM 없는 UTF-8 로 둔다. BOM 이
 붙으면 front-matter 정규식이 여는 `---` 를 못 찾는다.

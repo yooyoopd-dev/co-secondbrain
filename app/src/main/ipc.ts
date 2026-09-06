@@ -54,7 +54,7 @@ export type JudgmentResult =
 
 /** 허브 연결 상태. 좌측 레일과 동기화 화면이 같이 쓴다 */
 export interface HubStatus {
-  /** 개인 금고인가. 그렇다면 동기화 자체가 없다 */
+  /** 개인 Vault 인가. 그렇다면 동기화 자체가 없다 */
   personal: boolean;
   hub: string | null;
   hasToken: boolean;
@@ -77,10 +77,10 @@ export type ResolveResult =
 export interface AppSettings {
   /** `app.getVersion()` — package.json 의 값이다 */
   version: string;
-  /** 열려 있는 금고의 폴더. 안 열었으면 null */
+  /** 열려 있는 Vault 의 폴더. 안 열었으면 null */
   vaultRoot: string | null;
   vaultTitle: string | null;
-  /** 개인 금고인가. 안 열었으면 null */
+  /** 개인 Vault 인가. 안 열었으면 null */
   personal: boolean | null;
   /** 사용자가 고정한 공급자. null 이면 작업 종류별 라우팅 */
   provider: ProviderId | null;

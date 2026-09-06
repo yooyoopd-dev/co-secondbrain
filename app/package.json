@@ -2,7 +2,7 @@
   "name": "co-secondbrain",
   "version": "0.1.0",
   "private": true,
-  "description": "프로젝트 단위 Second Brain — 개인 금고 (M1)",
+  "description": "프로젝트 단위 Second Brain — 개인 Vault (M1)",
   "type": "module",
   "main": "dist/main/main.js",
   "scripts": {

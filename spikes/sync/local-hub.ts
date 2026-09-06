@@ -76,7 +76,7 @@ async function serve(): Promise<void> {
   허브 주소   ${url}
   토큰        ${info.token}
 
-금고 폴더 이름이 공간 id 가 됩니다. **폴더 이름을 ${SPACE} 로 만드십시오.**
+Vault 폴더 이름이 공간 id 가 됩니다. **폴더 이름을 ${SPACE} 로 만드십시오.**
 충돌을 보려면 다른 창에서:
 
   node --experimental-strip-types spikes/sync/local-hub.ts edit acme-corp

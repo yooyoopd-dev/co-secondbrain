@@ -76,7 +76,7 @@ ok('기본 메뉴가 없다', (await app.evaluate(({ Menu }) => Menu.getApplicat
 ok('IPC currentVault', (await win.evaluate(() => window.sb.currentVault())) === null);
 ok('IPC search', JSON.stringify(await win.evaluate(() => window.sb.search('없는말'))) === '[]');
 
-// 설정 — 금고를 안 열어도 열려야 한다. 못 여는 것 자체가 설정 문제일 때가 있다.
+// 설정 — Vault 를 안 열어도 열려야 한다. 못 여는 것 자체가 설정 문제일 때가 있다.
 const st = await win.evaluate(() => window.sb.settings());
 ok('Vault 없이도 설정이 열린다', st.vaultRoot === null && /^\d+\.\d+\.\d+/.test(st.version), st);
 ok('설정이 공급자 셋을 준다', st.providers.length === 3 && st.providers.every((p) => typeof p.installed === 'boolean'), st.providers);
