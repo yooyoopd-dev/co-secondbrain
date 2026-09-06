@@ -5,10 +5,14 @@
 # 릴리스로 간다. asar 안의 main·preload 가 도는지는 소스로 도는 검사가 말해 주지 않는다.
 name: release
 
+# 작업 가지도 넣는다. 여기서는 태그를 밀 수 없고 `workflow_dispatch` 는 기본 가지에
+# 파일이 있어야 뜬다. 판 번호는 `app/package.json` 이 갖고 있어 같은 판을 다시 돌리면
+# 릴리스 자산만 덮어쓴다. main 에 들어가면 태그와 수동 실행만 남긴다.
 on:
   workflow_dispatch:
   push:
     tags: ['v*']
+    branches: ['claude/**']
 
 permissions:
   contents: write
