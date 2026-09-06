@@ -6,6 +6,7 @@
 //
 // LLM 은 이 파일을 거치지 않고는 디스크에 닿을 수 없다.
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import { safeJoin, slugify } from './security.ts';
 import { citations, pageHash, parsePage, PageParseError, SUMMARY_MAX, serializePage } from './page.ts';
 import { EXTRACTED_DIR, type Vault } from './vault.ts';
@@ -295,7 +296,7 @@ export async function applyChangeSet(
   for (const w of writes) {
     if (w.content === null) await fs.rm(w.full, { force: true });
     else {
-      await fs.mkdir(w.full.slice(0, w.full.lastIndexOf('/')), { recursive: true });
+      await fs.mkdir(path.dirname(w.full), { recursive: true });
       await fs.writeFile(w.full, w.content, 'utf8');
     }
   }
@@ -312,7 +313,7 @@ export async function currentHash(vault: Vault, relPath: string): Promise<string
 /** 페이지 하나를 안전하게 쓴다 (사람이 UI 에서 직접 고칠 때). */
 export async function writePage(vault: Vault, relPath: string, page: Parameters<typeof serializePage>[0]): Promise<void> {
   const full = safeJoin(vault.root, relPath);
-  await fs.mkdir(full.slice(0, full.lastIndexOf('/')), { recursive: true });
+  await fs.mkdir(path.dirname(full), { recursive: true });
   await fs.writeFile(full, serializePage(page), 'utf8');
 }
 

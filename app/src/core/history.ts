@@ -3,6 +3,7 @@
 // 콘텐츠 주소 방식이라 같은 내용은 한 번만 저장된다.
 // 되돌리기의 단위는 "적용 1회"다 — ChangeSet 이 건드린 페이지를 한꺼번에 되돌린다.
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { safeJoin } from './security.ts';
 import type { Vault } from './vault.ts';
@@ -82,7 +83,7 @@ export async function restore(vault: Vault, snapshotId: string): Promise<string[
       await fs.rm(full, { force: true });
     } else {
       const content = await fs.readFile(safeJoin(vault.root, BLOBS, e.blob), 'utf8');
-      await fs.mkdir(full.slice(0, full.lastIndexOf('/')), { recursive: true });
+      await fs.mkdir(path.dirname(full), { recursive: true });
       await fs.writeFile(full, content, 'utf8');
     }
     restored.push(e.path);

@@ -7,6 +7,7 @@
 // 큐 파일을 두면 앱이 죽었을 때 큐와 디스크가 어긋나고, 그때 무엇이 진실인지 정할
 // 방법이 없다. "디스크가 진실이다"(PLAN.md §3)를 여기서도 지킨다.
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import { PAGE_PATH_RE } from '../changeset.ts';
 import { pageHash, parsePage } from '../page.ts';
 import { safeJoin } from '../security.ts';
@@ -166,7 +167,7 @@ async function pull(
     const full = safeJoin(vault.root, remote.path);
     if (entry && entry.path !== remote.path) await fs.rm(safeJoin(vault.root, entry.path), { force: true });
 
-    await fs.mkdir(full.slice(0, full.lastIndexOf('/')), { recursive: true });
+    await fs.mkdir(path.dirname(full), { recursive: true });
     await fs.writeFile(full, remote.content, 'utf8');
     await writeBase(vault, pageId, remote.content);
     const changed = !entry || entry.hash !== pageHash(remote.content) || entry.path !== remote.path;
@@ -268,7 +269,7 @@ export async function resolveConflict(
   }
 
   const full = safeJoin(vault.root, conflict.path);
-  await fs.mkdir(full.slice(0, full.lastIndexOf('/')), { recursive: true });
+  await fs.mkdir(path.dirname(full), { recursive: true });
   await fs.writeFile(full, merged, 'utf8');
   await writeBase(vault, conflict.pageId, merged);
 

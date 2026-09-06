@@ -3,6 +3,7 @@
 // **상태는 캐시다.** 지우면 다음 동기화에서 전량을 다시 받는다. 진실은 디스크의
 // 마크다운과 허브의 DB 두 곳뿐이고, 여기는 "어디까지 맞춰 놨는가" 만 적는다.
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { safeJoin } from '../security.ts';
 import type { Vault } from '../vault.ts';
@@ -43,7 +44,7 @@ export async function readState(vault: Vault): Promise<SyncState> {
 /** 임시 파일에 쓰고 이름을 바꾼다 — 쓰는 중에 앱이 죽어도 반쪽 상태가 남지 않는다. */
 export async function writeState(vault: Vault, state: SyncState): Promise<void> {
   const full = safeJoin(vault.root, STATE_PATH);
-  await fs.mkdir(full.slice(0, full.lastIndexOf('/')), { recursive: true });
+  await fs.mkdir(path.dirname(full), { recursive: true });
   const tmp = `${full}.tmp`;
   await fs.writeFile(tmp, JSON.stringify(state, null, 2), 'utf8');
   await fs.rename(tmp, full);
@@ -68,7 +69,7 @@ export async function readBase(vault: Vault, pageId: string): Promise<string | n
 
 export async function writeBase(vault: Vault, pageId: string, content: string): Promise<void> {
   const full = safeJoin(vault.root, baseFile(pageId));
-  await fs.mkdir(full.slice(0, full.lastIndexOf('/')), { recursive: true });
+  await fs.mkdir(path.dirname(full), { recursive: true });
   await fs.writeFile(full, content, 'utf8');
 }
 

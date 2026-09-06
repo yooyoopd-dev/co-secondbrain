@@ -1,12 +1,15 @@
 // M0 스파이크용 샘플 문서 생성. 실제 라이브러리로 만들어 실제 라이브러리로 읽는다.
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Document, Packer, Paragraph, HeadingLevel } from 'docx';
 import ExcelJS from 'exceljs';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import JSZip from 'jszip';
 
-const DIR = new URL('./files/', import.meta.url).pathname;
+// `.pathname` 은 Windows 에서 `/D:/...` 를 준다. 앞의 슬래시가 붙은 채로 fs 에 들어가면
+// 엉뚱한 자리에 만든다. 변환은 `fileURLToPath` 에게 맡긴다.
+const DIR = fileURLToPath(new URL('./files/', import.meta.url));
 await fs.mkdir(DIR, { recursive: true });
 const w = (n, b) => fs.writeFile(path.join(DIR, n), b);
 

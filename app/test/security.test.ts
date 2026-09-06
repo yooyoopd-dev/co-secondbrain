@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import { slugify, safeJoin, safePagePath, sourceIdFrom } from '../src/core/security.ts';
 
 // M0 에서 쓴 공격 문자열 14종을 회귀 테스트로 고정한다 (탈출 0건이 통과 조건).
@@ -22,9 +23,12 @@ const ATTACKS: [string, string][] = [
 ];
 
 test('공격 문자열 14종 전부 Vault 안으로 정규화된다', () => {
+  // 기대값을 `/vault/...` 로 적으면 Windows 에서 헛돈다. 거기서는 `D:\vault\...` 로
+  // resolve 되고 검사는 통과하는데 이 줄이 먼저 넘어진다. 구분자는 os 에게 맡긴다.
+  const dir = path.resolve('/vault', '02_NOTES/entities') + path.sep;
   for (const [title, label] of ATTACKS) {
     const p = safePagePath('/vault', '02_NOTES/entities', title);
-    assert.ok(p.startsWith('/vault/02_NOTES/entities/'), `${label}: ${p}`);
+    assert.ok(p.startsWith(dir), `${label}: ${p}`);
     assert.ok(!p.includes('..'), `${label}: 상대 경로 조각이 남음 — ${p}`);
   }
 });
