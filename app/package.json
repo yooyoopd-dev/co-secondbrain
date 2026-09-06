@@ -15,7 +15,8 @@
     "check": "npm run typecheck && npm test",
     "build:preload": "esbuild src/main/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/main/preload.cjs",
     "start": "electron .",
-    "smoke": "xvfb-run -a node ../spikes/app/smoke.mjs"
+    "smoke": "xvfb-run -a node ../spikes/app/smoke.mjs",
+    "smoke:win": "node ../spikes/app/smoke.mjs"
   },
   "dependencies": {
     "@kenjiuno/msgreader": "^1.24.0",

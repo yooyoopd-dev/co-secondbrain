@@ -771,10 +771,14 @@ Electron `safeStorage` 는 Windows 에서 DPAPI 를, macOS 에서 Keychain 을 �
 
 | 확인 | 기대값 | 방법 |
 |---|---|---|
-| `safeStorage` 백엔드 | `available=true` | `npm run smoke` 출력의 "자격 증명 저장소" 줄 |
+| `safeStorage` 백엔드 | `available=true` | `npm run smoke:win` 출력의 "자격 증명 저장소" 줄 |
 | 토큰 보관 왕복 | 앱을 껐다 켜도 연결이 유지된다 | 허브 연결 후 재시작 |
-| 병합 화면 렌더링 | 세 칸이 창을 넘치지 않는다 | 충돌을 일부러 내고 눈으로 확인 |
+| 병합 화면 렌더링 | 세 칸이 창을 넘치지 않는다 | `spikes/sync/local-hub.ts` 로 충돌을 내고 눈으로 확인 |
 | 자격 증명 파일 권한 | 다른 계정이 못 읽는다 | `%APPDATA%` 아래 `hub-creds.json` |
+
+`spikes/sync/local-hub.ts` 가 그 확인을 위한 발판이다. `serve` 는 127.0.0.1 에 허브를
+띄우고 앱에 넣을 주소와 토큰을 찍는다. `edit <pageId>` 는 다른 사용자인 척 허브의 페이지를
+고쳐 충돌을 만든다. 자동 판정은 하지 않는다 — 사람이 화면을 보는 것이 목적이다.
 
 `mode: 0o600` 은 리눅스 기준이고 **Windows 에서는 사실상 무시된다.** Windows 에서 파일을
 지키는 것은 DPAPI 암호화다. 다른 계정이 파일을 읽어도 자기 키로는 못 푼다. 확실하지 않은

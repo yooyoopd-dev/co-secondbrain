@@ -184,10 +184,30 @@ Jaro-Winkler 임계는 0.92에서 0.96으로 올려야 합니다.
 
 ### Windows PC에서 확인할 것
 
-개발 PC의 Windows에서 `npm run smoke` 를 돌리면 "자격 증명 저장소" 줄이 나옵니다.
-`available=true` 여야 허브 연결이 열립니다. 리눅스 개발 컨테이너는 키링이 없어
-`basic_text` 로 떨어지고 앱이 설계대로 연결을 막습니다
+리눅스 컨테이너에서 끝낼 수 없는 항목입니다. 사내망이 아닌 개발 PC의 Windows면 됩니다.
+
+**1. 자격 증명 저장소** — `cd app && npm i && npm run build && npm run smoke:win`.
+출력의 "자격 증명 저장소" 줄이 `available=true` 여야 허브 연결이 열립니다. 리눅스
+개발 컨테이너는 키링이 없어 `basic_text` 로 떨어지고 앱이 설계대로 연결을 막습니다
 ([`docs/M2-PLAN.md`](docs/M2-PLAN.md) §17.5).
+
+**2. 허브 연결과 병합 화면** — 허브를 옆에 띄워 놓고 눈으로 봅니다.
+
+```
+node --experimental-strip-types spikes/sync/local-hub.ts serve
+```
+
+주소와 토큰이 화면에 뜹니다. 앱에서 `ACME` 라는 이름의 폴더로 Vault를 만들고
+(폴더 이름이 공간 id가 됩니다) 좌측 레일의 [허브 연결]에 넣습니다. 위키 페이지를
+하나 만들어 동기화한 뒤 다른 창에서 아래를 돌리면 충돌이 납니다.
+
+```
+node --experimental-strip-types spikes/sync/local-hub.ts edit acme-corp
+```
+
+앱에서 같은 줄을 고치고 [동기화]를 누르면 세 칸 병합 화면이 뜹니다. 확인할 것은
+세 칸이 창을 넘치지 않는가, 충돌 표시가 남으면 저장 버튼이 잠기는가, 앱을 껐다 켜도
+연결이 유지되는가입니다.
 
 ### 사내 PC에서 받아 와야 하는 것
 
