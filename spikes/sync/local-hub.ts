@@ -105,7 +105,15 @@ async function edit(pageId: string | undefined): Promise<void> {
   }
   const page = (await res.json()) as { path: string; version: number; content: string };
   const lines = page.content.split('\n');
-  const i = lines.findIndex((l, n) => n > 0 && l.trim().length > 0 && !l.startsWith('---'));
+  // 본문의 첫 줄을 고친다. front-matter 를 건너뛰어야 한다 — 안 그러면 여는 `---` 바로
+  // 다음 줄(`id: ...`)을 고쳐 YAML 자체가 깨진다. 실제로 그렇게 짰다가 실측 중에 잡았다.
+  const closeAt = lines.indexOf('---', 1);
+  const bodyFrom = closeAt === -1 ? 0 : closeAt + 1;
+  const i = lines.findIndex((l, n) => n >= bodyFrom && l.trim().length > 0);
+  if (i === -1) {
+    console.error('본문에 고칠 줄이 없습니다.');
+    process.exit(1);
+  }
   lines[i] = `${lines[i]} — 다른 사람이 고침`;
 
   const put = await fetch(at, {
