@@ -2,7 +2,8 @@
 // 좌: 원본 목록 / 중: 검색 결과 / 우: 원문 뷰어 (앵커로 점프)
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Extraction, SearchHit } from '../core/types.ts';
-import type { SbApi, IngestResult, SourceSummary } from '../main/ipc.ts';
+import type { SbApi, HubStatus, IngestResult, SourceSummary } from '../main/ipc.ts';
+import type { SyncConflict, SyncReport } from '../core/sync/index.ts';
 import type { VaultConfig } from '../core/vault.ts';
 import type { Review } from '../core/review.ts';
 import type { Status } from '../core/spend.ts';
@@ -13,6 +14,7 @@ import type { ScanEstimate } from '../core/tokens.ts';
 import { summarizeScan } from '../core/tokens.ts';
 import { summarize } from '../core/spend.ts';
 import ReviewOverlay from './Review.tsx';
+import SyncPanel from './Sync.tsx';
 
 declare global {
   interface Window {
@@ -40,6 +42,12 @@ export default function App() {
   // 전수 검사는 돈이 든다. 예상 비용을 보여주고 확인받은 뒤에 돈다 (M2-PLAN.md §3.3)
   const [estimate, setEstimate] = useState<ScanEstimate | null>(null);
   const [judgment, setJudgment] = useState<ParsedJudgment | null>(null);
+  // 동기화. 충돌은 main 의 메모리에만 있고 디스크에는 없다 (HUB.md §5)
+  const [hub, setHub] = useState<HubStatus | null>(null);
+  const [syncOpen, setSyncOpen] = useState(false);
+  const [conflicts, setConflicts] = useState<SyncConflict[]>([]);
+  const [syncReport, setSyncReport] = useState<SyncReport | null>(null);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
 
   useEffect(() => {
     void window.sb.currentVault().then(setVault);
@@ -49,6 +57,7 @@ export default function App() {
     setSources(await window.sb.listSources());
     setSpend(await window.sb.spendStatus());
     setPending((await window.sb.plan()).fresh.length);
+    setHub(await window.sb.hubStatus());
   }, []);
 
   useEffect(() => {
@@ -203,6 +212,68 @@ export default function App() {
     }
   };
 
+  /* 동기화 — 받기·보내기는 main 이 하고 화면은 결과와 충돌만 그린다 */
+
+  const openSync = async () => {
+    setSyncNote(null);
+    setConflicts(await window.sb.conflicts());
+    setSyncOpen(true);
+  };
+
+  const connectHub = async (url: string, token: string) => {
+    setBusy(true);
+    try {
+      const r = await window.sb.connectHub(url, token);
+      setSyncNote(r.ok ? `연결했습니다 (권한 ${r.role})` : r.error);
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disconnectHub = async () => {
+    setBusy(true);
+    try {
+      await window.sb.disconnectHub();
+      setConflicts([]);
+      setSyncReport(null);
+      setSyncNote('연결을 끊었습니다. 받아 둔 페이지는 그대로 남습니다');
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const syncNow = async () => {
+    setBusy(true);
+    setSyncNote(null);
+    try {
+      const r = await window.sb.syncNow();
+      if (r.ok) {
+        setSyncReport(r.report);
+        setConflicts(r.report.conflicts);
+        if (r.report.conflicts.length > 0) setSyncNote(`충돌 ${r.report.conflicts.length}건을 병합해 주십시오`);
+      } else {
+        setSyncNote(r.error);
+      }
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resolve = async (pageId: string, merged: string) => {
+    setBusy(true);
+    try {
+      const r = await window.sb.resolveConflict(pageId, merged);
+      if (r.conflicts) setConflicts(r.conflicts);
+      setSyncNote(r.ok ? `올렸습니다 (v${r.version})` : r.error);
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const jump = async (sourceId: string, locator: string | null) => {
     const ext = await window.sb.readSource(sourceId);
     if (ext) setViewer({ ext, locator });
@@ -223,6 +294,8 @@ export default function App() {
         pending={pending}
         onLint={async () => setEstimate(await window.sb.estimateJudgment())}
         onExport={exportDeck}
+        hub={hub}
+        onSync={openSync}
       />
       <Results
         query={query}
@@ -241,6 +314,20 @@ export default function App() {
       />
       <Viewer viewer={viewer} busy={busy} note={reviewNote} onPropose={propose} />
       {report && <ReportToast report={report} onClose={() => setReport(null)} />}
+      {syncOpen && hub && (
+        <SyncPanel
+          status={hub}
+          conflicts={conflicts}
+          report={syncReport}
+          busy={busy}
+          note={syncNote}
+          onConnect={(url, token) => void connectHub(url, token)}
+          onDisconnect={() => void disconnectHub()}
+          onSync={() => void syncNow()}
+          onResolve={(pageId, merged) => void resolve(pageId, merged)}
+          onClose={() => setSyncOpen(false)}
+        />
+      )}
       {review && (
         <ReviewOverlay
           review={review}
@@ -292,6 +379,8 @@ function Rail({
   pending,
   onLint,
   onExport,
+  hub,
+  onSync,
 }: {
   vault: VaultConfig;
   sources: SourceSummary[];
@@ -303,6 +392,8 @@ function Rail({
   pending: number | null;
   onLint: () => void;
   onExport: () => void;
+  hub: HubStatus | null;
+  onSync: () => void;
 }) {
   // 개인 금고와 CO 영역을 색·아이콘·접두로 구분한다 (DESIGN-SYSTEM.md)
   const isCo = vault.hub !== null;
@@ -328,6 +419,18 @@ function Rail({
             슬라이드
           </button>
         </div>
+        {hub && !hub.personal && (
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            <button
+              style={{ flex: 1, ...(hub.conflicts > 0 ? { borderColor: 'var(--warn)', color: 'var(--warn)' } : {}) }}
+              disabled={busy}
+              onClick={onSync}
+              title={hub.hasToken ? '허브와 동기화' : '허브에 연결'}
+            >
+              {syncLabel(hub)}
+            </button>
+          </div>
+        )}
       </div>
 
       <div style={S.railBody}>
@@ -367,6 +470,14 @@ function Rail({
       </div>
     </aside>
   );
+}
+
+/** 레일 버튼 한 줄. 사람이 먼저 알아야 할 것은 충돌이고 그 다음이 보낼 변경이다 */
+function syncLabel(hub: HubStatus): string {
+  if (!hub.hasToken) return '허브 연결';
+  if (hub.conflicts > 0) return `충돌 ${hub.conflicts}건`;
+  if (hub.pending > 0) return `동기화 · 보낼 것 ${hub.pending}`;
+  return '동기화';
 }
 
 /* ---------- 중: 검색 ---------- */

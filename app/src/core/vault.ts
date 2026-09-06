@@ -24,6 +24,9 @@ export const VAULT_DIRS = [
   '.sb/sync/base',
 ] as const;
 
+/** 개인 금고의 공간 id. 이 금고는 허브에 붙지 않는다 (PLAN.md §3) */
+export const PERSONAL_ID = 'personal';
+
 export interface VaultConfig {
   /** 공간 id — `personal` 또는 프로젝트명 */
   id: string;
@@ -111,6 +114,17 @@ export async function openVault(root: string): Promise<Vault> {
   // 나중에 추가된 디렉터리를 채운다 (구버전 Vault 대응)
   for (const dir of VAULT_DIRS) await fs.mkdir(safeJoin(root, dir), { recursive: true });
   return { root, config };
+}
+
+/**
+ * 허브 주소를 바꿔 적는다. **토큰은 여기 넣지 않는다** — 금고 폴더는 통째로 복사되거나
+ * 백업될 수 있고 그러면 토큰이 같이 나간다. 토큰은 OS 자격 증명 저장소에만 둔다.
+ */
+export async function setHub(vault: Vault, hub: string | null): Promise<Vault> {
+  if (hub !== null && vault.config.id === PERSONAL_ID) throw new Error('개인 금고는 허브에 붙이지 않습니다');
+  const config: VaultConfig = { ...vault.config, hub };
+  await fs.writeFile(safeJoin(vault.root, CONFIG_PATH), JSON.stringify(config, null, 2), 'utf8');
+  return { root: vault.root, config };
 }
 
 export async function isVault(root: string): Promise<boolean> {

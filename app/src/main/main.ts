@@ -3,16 +3,34 @@
 // 렌더러는 파일시스템에 직접 닿지 않는다. `ipc.ts` 의 SbApi 에 적힌 것이 표면의 전부이고
 // 그 밖의 것은 부를 수 없다. 그래서 여기서 sandbox 를 켜고 항해를 막는다 —
 // **이 앱이 브라우저가 되면 안 된다.** 사내 문서를 다루는 도구라 그게 곧 유출 경로다.
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { IPC } from './ipc.ts';
 import { Store } from './store.ts';
+import { credStore, type Cipher } from './creds.ts';
 import { SOURCE_KIND_BY_EXT } from '../core/types.ts';
 import type { Answer } from '../core/query.ts';
 
+/**
+ * OS 자격 증명 저장소. Windows 는 DPAPI, macOS 는 Keychain 이다.
+ * Linux 에서 키링이 없으면 Electron 이 `basic_text` 로 떨어지는데 그건 난독화라
+ * **불가로 본다.** 그 경우 앱은 토큰을 저장하지 않고 사유를 화면에 띄운다.
+ */
+const cipher: Cipher = {
+  available: () => {
+    if (!safeStorage.isEncryptionAvailable()) return false;
+    if (process.platform !== 'linux') return true;
+    return safeStorage.getSelectedStorageBackend() !== 'basic_text';
+  },
+  encrypt: (plain) => safeStorage.encryptString(plain),
+  decrypt: (enc) => safeStorage.decryptString(enc),
+};
+
 // 지출은 Vault 가 아니라 계정 단위로 쌓는다. Vault 별로 세면 상한을 두 배로 쓴다.
 const store = new Store({
+  // 토큰은 Vault 폴더가 아니라 사용자 데이터 폴더에 암호문으로 둔다 (creds.ts)
+  tokens: credStore(path.join(app.getPath('userData'), 'hub-creds.json'), cipher),
   spendFile: path.join(app.getPath('userData'), 'spend.json'),
   // CLI 가 MCP 서버를 서브프로세스로 띄운다. 패키징본에는 node 가 없으므로
   // Electron 자신을 ELECTRON_RUN_AS_NODE 로 돌린다 (PLAN.md §7.2).
@@ -107,6 +125,14 @@ function registerIpc(): void {
   ipcMain.handle(IPC.archiveAnswer, (_e, q: string, a: Answer) => store.archiveAnswer(q, a));
   ipcMain.handle(IPC.estimateJudgment, () => store.estimateJudgment());
   ipcMain.handle(IPC.lintJudgment, () => store.lintJudgment());
+
+  // 동기화 — 충돌은 디스크를 안 건드린다. 병합 결과만 다시 올라간다 (HUB.md §5)
+  ipcMain.handle(IPC.hubStatus, () => store.hubStatus());
+  ipcMain.handle(IPC.connectHub, (_e, url: string, token: string) => store.connectHub(url, token));
+  ipcMain.handle(IPC.disconnectHub, () => store.disconnectHub());
+  ipcMain.handle(IPC.syncNow, () => store.syncNow());
+  ipcMain.handle(IPC.conflicts, () => store.conflicts());
+  ipcMain.handle(IPC.resolveConflict, (_e, pageId: string, merged: string) => store.resolveConflict(pageId, merged));
 
   // 덱은 core 가 문자열로 만들고 파일로 쓰는 것은 여기서 한다.
   ipcMain.handle(IPC.exportDeck, async () => {

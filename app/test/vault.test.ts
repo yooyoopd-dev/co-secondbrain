@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { createVault, openVault, isVault, appendLog, VAULT_DIRS } from '../src/core/vault.ts';
+import { createVault, openVault, isVault, appendLog, setHub, VAULT_DIRS, PERSONAL_ID } from '../src/core/vault.ts';
 
 const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'sb-'));
 
@@ -58,4 +58,16 @@ test('log.md 는 grep 가능한 접두사 형식이다', async () => {
   const entries = log.split('\n').filter((l) => /^## \[\d{4}-\d{2}-\d{2}\] /.test(l));
   assert.equal(entries.length, 2);
   assert.ok(entries[0]!.includes('ingest'));
+});
+
+test('허브 주소는 설정에 남고 개인 금고는 거절한다', async () => {
+  const root = await tmp();
+  const v = await createVault(root, { id: 'ACME', title: 'ACME', hub: null });
+  const withHub = await setHub(v, 'http://co-hub:8080');
+  assert.equal(withHub.config.hub, 'http://co-hub:8080');
+  assert.equal((await openVault(root)).config.hub, 'http://co-hub:8080', '디스크에 남는다');
+  assert.equal((await setHub(withHub, null)).config.hub, null);
+
+  const personal = await createVault(await tmp(), { id: PERSONAL_ID, title: '개인 금고', hub: null });
+  await assert.rejects(() => setHub(personal, 'http://co-hub:8080'), /개인 금고/);
 });

@@ -8,6 +8,7 @@ import type { Status } from '../core/spend.ts';
 import type { Answer } from '../core/query.ts';
 import type { ParsedJudgment } from '../core/lint/judgment.ts';
 import type { ScanEstimate } from '../core/tokens.ts';
+import type { SyncConflict, SyncReport } from '../core/sync/index.ts';
 
 export interface IngestResult {
   ok: string[];
@@ -35,6 +36,27 @@ export type AskResult =
 export type JudgmentResult =
   | { ok: true; result: ParsedJudgment; costUsd: number }
   | { ok: false; error: string };
+
+/** 허브 연결 상태. 좌측 레일과 동기화 화면이 같이 쓴다 */
+export interface HubStatus {
+  /** 개인 금고인가. 그렇다면 동기화 자체가 없다 */
+  personal: boolean;
+  hub: string | null;
+  hasToken: boolean;
+  /** 이 시스템에서 토큰을 암호화해 보관할 수 있는가 */
+  canStoreToken: boolean;
+  /** 아직 허브로 못 올린 로컬 변경 수 */
+  pending: number;
+  cursor: number;
+  conflicts: number;
+}
+
+export type SyncResult = { ok: true; report: SyncReport } | { ok: false; error: string };
+
+/** 병합 결과를 올린 뒤. 남은 충돌 목록을 같이 준다 — 화면이 다시 묻지 않아도 된다 */
+export type ResolveResult =
+  | { ok: true; version: number; conflicts: SyncConflict[] }
+  | { ok: false; error: string; conflicts?: SyncConflict[] };
 
 /** preload 가 window.sb 로 노출하는 표면. 이 목록 밖의 것은 렌더러가 못 부른다. */
 export interface SbApi {
@@ -65,6 +87,17 @@ export interface SbApi {
   lintJudgment(): Promise<JudgmentResult>;
   /** Marp 덱을 파일로 저장한다. 저장한 경로를 돌려주고, 취소하면 null */
   exportDeck(): Promise<string | null>;
+
+  /* 동기화 (HUB.md §5) */
+  hubStatus(): Promise<HubStatus>;
+  /** 토큰을 저장하기 전에 허브에 실제로 물어본다 */
+  connectHub(url: string, token: string): Promise<{ ok: true; role: string } | { ok: false; error: string }>;
+  disconnectHub(): Promise<void>;
+  /** 한 번 돌린다. 충돌은 디스크를 안 건드리고 병합 화면으로 온다 */
+  syncNow(): Promise<SyncResult>;
+  conflicts(): Promise<SyncConflict[]>;
+  /** 사람이 고른 병합 결과. 충돌 표시가 남아 있으면 거절당한다 */
+  resolveConflict(pageId: string, merged: string): Promise<ResolveResult>;
 }
 
 export const IPC = {
@@ -85,4 +118,10 @@ export const IPC = {
   estimateJudgment: 'sb:estimateJudgment',
   lintJudgment: 'sb:lintJudgment',
   exportDeck: 'sb:exportDeck',
+  hubStatus: 'sb:hubStatus',
+  connectHub: 'sb:connectHub',
+  disconnectHub: 'sb:disconnectHub',
+  syncNow: 'sb:syncNow',
+  conflicts: 'sb:conflicts',
+  resolveConflict: 'sb:resolveConflict',
 } as const;

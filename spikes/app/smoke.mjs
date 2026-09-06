@@ -71,6 +71,17 @@ ok('노출된 것 말고는 없다', await win.evaluate(() => typeof window.requ
 ok('IPC currentVault', (await win.evaluate(() => window.sb.currentVault())) === null);
 ok('IPC search', JSON.stringify(await win.evaluate(() => window.sb.search('없는말'))) === '[]');
 
+// 허브 토큰은 OS 자격 증명 저장소에 넣는다. **여기서 재는 것은 어떤 백엔드가 잡히는가**이고
+// 리눅스 컨테이너에는 키링이 없어 값 자체는 사내·Windows 와 다르다.
+// Windows 에서는 available=true 여야 한다 (DPAPI). 아니면 앱이 연결을 거절한다.
+const cred = await app.evaluate(({ safeStorage }) => ({
+  platform: process.platform,
+  available: safeStorage.isEncryptionAvailable(),
+  backend: process.platform === 'linux' ? safeStorage.getSelectedStorageBackend() : null,
+}));
+ok('safeStorage 를 물어도 앱이 죽지 않는다', typeof cred.available === 'boolean', cred);
+console.log(`      자격 증명 저장소: ${JSON.stringify(cred)}`);
+
 // 첫 화면에 420ms 진입 애니메이션이 있다. 끝나기 전에 찍으면 전부 흐리게 나온다.
 await win.waitForTimeout(700);
 

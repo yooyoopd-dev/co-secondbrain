@@ -20,4 +20,10 @@ contextBridge.exposeInMainWorld('sb', {
   estimateJudgment: () => ipcRenderer.invoke(IPC.estimateJudgment),
   lintJudgment: () => ipcRenderer.invoke(IPC.lintJudgment),
   exportDeck: () => ipcRenderer.invoke(IPC.exportDeck),
+  hubStatus: () => ipcRenderer.invoke(IPC.hubStatus),
+  connectHub: (url: string, token: string) => ipcRenderer.invoke(IPC.connectHub, url, token),
+  disconnectHub: () => ipcRenderer.invoke(IPC.disconnectHub),
+  syncNow: () => ipcRenderer.invoke(IPC.syncNow),
+  conflicts: () => ipcRenderer.invoke(IPC.conflicts),
+  resolveConflict: (pageId: string, merged: string) => ipcRenderer.invoke(IPC.resolveConflict, pageId, merged),
 });

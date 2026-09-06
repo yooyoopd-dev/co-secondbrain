@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { SearchIndex, type Db } from '../core/search.ts';
-import { openVault, createVault, importSource, appendLog, type Vault } from '../core/vault.ts';
+import { openVault, createVault, importSource, appendLog, setHub, PERSONAL_ID, type Vault } from '../core/vault.ts';
 import { extractFile, buildThreads } from '../core/extract/index.ts';
 import { extractEmail, type MailMeta } from '../core/extract/email.ts';
 import { safeJoin } from '../core/security.ts';
@@ -27,7 +27,9 @@ import { toMarp } from '../core/marp.ts';
 import { estimateScan, type ScanEstimate } from '../core/tokens.ts';
 import { disposeWorkdir, prepareWorkdir } from '../core/agent/workdir.ts';
 import type { Extraction, Relation } from '../core/types.ts';
-import type { AskResult, IngestResult, JudgmentResult, ProposeResult, SourceSummary } from './ipc.ts';
+import { hubClient, pendingChanges, resolveConflict, scanLocal, sync, readState, HubError, HubOffline, type HubClient, type SyncConflict } from '../core/sync/index.ts';
+import type { TokenStore } from './creds.ts';
+import type { AskResult, HubStatus, IngestResult, JudgmentResult, ProposeResult, ResolveResult, SourceSummary, SyncResult } from './ipc.ts';
 
 export class Store {
   #vault: Vault | null = null;
@@ -47,9 +49,25 @@ export class Store {
   /** MCP 서버를 어떻게 띄울지. 개발과 패키징본이 달라 main 이 정한다 */
   readonly #mcpLaunch: ((vaultRoot: string) => McpLaunch) | null;
 
-  constructor(opts: { spendFile?: string; mcpLaunch?: (vaultRoot: string) => McpLaunch } = {}) {
+  /** 허브 토큰 보관소. 없으면 허브에 붙지 못한다 */
+  readonly #tokens: TokenStore | null;
+  /** 테스트가 가짜 허브를 물릴 자리. 실행 중에는 전역 fetch 다 */
+  readonly #hubFetch: typeof globalThis.fetch;
+  /** 병합 대기 중인 충돌. 변경안과 같이 **디스크에 없다** — 사람이 고를 때까지 메모리에만 있다 */
+  #conflicts: SyncConflict[] = [];
+
+  constructor(
+    opts: {
+      spendFile?: string;
+      mcpLaunch?: (vaultRoot: string) => McpLaunch;
+      tokens?: TokenStore;
+      hubFetch?: typeof globalThis.fetch;
+    } = {},
+  ) {
     this.#spendFile = opts.spendFile ?? null;
     this.#mcpLaunch = opts.mcpLaunch ?? null;
+    this.#tokens = opts.tokens ?? null;
+    this.#hubFetch = opts.hubFetch ?? globalThis.fetch;
   }
 
   get vault(): Vault | null {
@@ -65,6 +83,7 @@ export class Store {
     this.#index = new SearchIndex(this.#db as unknown as Db);
     await this.#reindexFromDisk();
     this.#manifest = await readManifest(v);
+    this.#conflicts = [];
     if (this.#spendFile) this.#spend = await readSpend(this.#spendFile);
     return v;
   }
@@ -75,6 +94,7 @@ export class Store {
     this.#index = null;
     this.#vault = null;
     this.#pending = null;
+    this.#conflicts = [];
   }
 
   /** 파일 여러 개를 인제스트한다. 한 건이 실패해도 나머지는 계속한다. */
@@ -380,6 +400,127 @@ export class Store {
     const v = this.#require();
     this.#pending = toChangeSet(question, answer, new Date().toISOString());
     return buildReview(v, this.#pending, await this.#anchors());
+  }
+
+  /* ---------- 동기화 (HUB.md §5) ---------- */
+
+  /** 허브 연결 상태와 아직 안 올라간 로컬 변경 수. 좌측 레일에 띄운다. */
+  async hubStatus(): Promise<HubStatus> {
+    const v = this.#require();
+    const personal = v.config.id === PERSONAL_ID;
+    const base: HubStatus = {
+      personal,
+      hub: v.config.hub,
+      hasToken: false,
+      canStoreToken: this.#tokens?.available() ?? false,
+      pending: 0,
+      cursor: 0,
+      conflicts: this.#conflicts.length,
+    };
+    if (personal || !v.config.hub) return base;
+
+    base.hasToken = this.#tokens ? (await this.#tokens.get(v.config.id)) !== null : false;
+    const state = await readState(v);
+    base.cursor = state.cursor;
+    base.pending = pendingChanges(state, (await scanLocal(v)).pages).length;
+    return base;
+  }
+
+  /**
+   * 허브에 붙는다. 토큰을 저장하기 **전에** 실제로 물어본다 — 오타 난 토큰을 보관해 두면
+   * 처음 실패하는 지점이 한참 뒤의 동기화가 되고 사람은 이유를 모른다.
+   */
+  async connectHub(url: string, token: string): Promise<{ ok: true; role: string } | { ok: false; error: string }> {
+    const v = this.#require();
+    if (v.config.id === PERSONAL_ID) return { ok: false, error: '개인 금고는 허브에 붙이지 않습니다' };
+    if (!this.#tokens) return { ok: false, error: '토큰 보관소가 없습니다' };
+    if (!this.#tokens.available()) return { ok: false, error: '이 시스템에서는 토큰을 안전하게 보관할 수 없습니다' };
+
+    const client = hubClient({ url, token }, this.#hubFetch);
+    let role: string;
+    try {
+      const space = (await client.spaces()).find((s) => s.id === v.config.id);
+      if (!space) return { ok: false, error: `허브에 ${v.config.id} 공간이 없거나 접근 권한이 없습니다` };
+      if (space.role === 'reader') return { ok: false, error: '읽기 권한만 있어 동기화할 수 없습니다' };
+      role = space.role;
+    } catch (e) {
+      if (e instanceof HubOffline) return { ok: false, error: '허브에 닿지 못했습니다' };
+      if (e instanceof HubError) return { ok: false, error: `허브가 거절했습니다 (${e.status}): ${e.message}` };
+      throw e;
+    }
+
+    await this.#tokens.set(v.config.id, token);
+    this.#vault = await setHub(v, url);
+    await appendLog(this.#vault, 'ingest', `허브 연결 ${url}`);
+    return { ok: true, role };
+  }
+
+  /** 토큰만 지운다. 이미 받아 둔 페이지는 그대로 둔다 — 지식은 로컬에 남는 것이 원칙이다. */
+  async disconnectHub(): Promise<void> {
+    const v = this.#require();
+    await this.#tokens?.remove(v.config.id);
+    this.#vault = await setHub(v, null);
+    this.#conflicts = [];
+  }
+
+  /** 한 번 돌린다. 충돌은 아무것도 쓰지 않고 병합 화면으로 넘어간다. */
+  async syncNow(): Promise<SyncResult> {
+    const v = this.#require();
+    const client = await this.#hub();
+    if (!client.ok) return { ok: false, error: client.error };
+    try {
+      const report = await sync(v, client.client);
+      this.#conflicts = report.conflicts;
+      if (report.pulled.length || report.pushed.length) {
+        await writeIndex(v, (await readWikiPages(v)).entries);
+        await appendLog(v, 'ingest', `동기화 받기 ${report.pulled.length}건 · 보내기 ${report.pushed.length}건`);
+      }
+      return { ok: true, report };
+    } catch (e) {
+      if (e instanceof HubError) return { ok: false, error: `허브가 거절했습니다 (${e.status}): ${e.message}` };
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  /** 병합 화면이 들고 있어야 할 재료. 앱을 다시 띄우면 사라지고 다음 동기화에서 다시 난다. */
+  conflicts(): SyncConflict[] {
+    return this.#conflicts;
+  }
+
+  /** 사람이 고른 병합 결과를 올린다. 충돌 표시가 남아 있으면 core 가 거절한다. */
+  async resolveConflict(pageId: string, merged: string): Promise<ResolveResult> {
+    const v = this.#require();
+    const conflict = this.#conflicts.find((c) => c.pageId === pageId);
+    if (!conflict) return { ok: false, error: '그 충돌이 목록에 없습니다' };
+    const client = await this.#hub();
+    if (!client.ok) return { ok: false, error: client.error };
+
+    let r;
+    try {
+      r = await resolveConflict(v, client.client, conflict, merged);
+    } catch (e) {
+      if (e instanceof HubOffline) return { ok: false, error: '허브에 닿지 못했습니다' };
+      if (e instanceof HubError) return { ok: false, error: `허브가 거절했습니다 (${e.status}): ${e.message}` };
+      throw e;
+    }
+    if (!r.ok) {
+      // 병합하는 사이에 또 바뀌었으면 새 재료로 갈아 끼운다. 사람이 다시 고른다
+      if (r.conflict) this.#conflicts = this.#conflicts.map((c) => (c.pageId === pageId ? r.conflict! : c));
+      return { ok: false, error: r.reason, conflicts: this.#conflicts };
+    }
+    this.#conflicts = this.#conflicts.filter((c) => c.pageId !== pageId);
+    await writeIndex(v, (await readWikiPages(v)).entries);
+    await appendLog(v, 'ingest', `충돌 병합 ${conflict.path}`);
+    return { ok: true, version: r.version, conflicts: this.#conflicts };
+  }
+
+  /** 허브 클라이언트를 만든다. 주소나 토큰이 없으면 이유를 문장으로 돌려준다. */
+  async #hub(): Promise<{ ok: true; client: HubClient } | { ok: false; error: string }> {
+    const v = this.#require();
+    if (v.config.id === PERSONAL_ID || !v.config.hub) return { ok: false, error: '개인 금고는 동기화하지 않습니다' };
+    const token = await this.#tokens?.get(v.config.id);
+    if (!token) return { ok: false, error: '허브 토큰이 없습니다. 다시 연결하십시오' };
+    return { ok: true, client: hubClient({ url: v.config.hub, token }, this.#hubFetch) };
   }
 
   /* ---------- 내부 ---------- */
