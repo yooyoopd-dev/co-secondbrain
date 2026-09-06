@@ -3,6 +3,9 @@
 # 지우는 이유는 하나다. 받는 사람이 목록에서 옛 파일을 집어 가는 일을 막는다.
 # 릴리스와 태그 자체는 남긴다 — 어느 판이 언제 나갔는지는 기록이다.
 $ErrorActionPreference = 'Stop'
+# PowerShell 7.4 부터 외부 명령의 0 아닌 종료 코드도 위 설정에 걸려 던진다. 여기서는
+# `gh release view` 가 "없다"는 뜻으로 1 을 준다. 그것까지 던지면 첫 릴리스를 못 만든다.
+$PSNativeCommandUseErrorActionPreference = $false
 
 $version = (Get-Content app/package.json -Raw | ConvertFrom-Json).version
 $tag = "v$version"
