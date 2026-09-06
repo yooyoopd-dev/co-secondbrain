@@ -87,7 +87,7 @@ IP 주소)가 팀원 사이를 중계합니다. CO-Hub는 SQLite와 블롭 저�
 | 링크 그래프 · Lint 계산 검사 7종 · `index.md` 자동 조립 | 완료 |
 | LLM CLI 어댑터 — Claude Code(A등급) · Gemini(B등급) · 배치 세션 재개 | 완료 |
 | **diff 검토 UI** — 관문 8. 승인해야 디스크에 닿는다. 편집 후 승인도 관문을 다시 거친다 | 완료 |
-| Electron 창 + IPC | 완료 (Windows 실렌더링은 미검증) |
+| Electron 창 + IPC | 완료 (Windows 실렌더링 확인) |
 | 시맨틱 캐시 · 지출 계량기 · 공급자 라우팅 | 완료 |
 | 내장 MCP 서버 — 에이전트가 위키를 당겨 간다 | 완료 |
 | 질의 → 인용 답변 → `synthesis/` 보관 | 완료 |
@@ -95,7 +95,7 @@ IP 주소)가 팀원 사이를 중계합니다. CO-Hub는 SQLite와 블롭 저�
 | 공급자별 위키 접근 — 당겨 가기(MCP) · 밀어 넣기 | 완료 |
 | **CO-Hub 서버** — 동시 쓰기 무손실, 콘텐츠 주소 blob, 이벤트 커서 | 완료 |
 | **동기화 클라이언트** — 3-way 병합 · 오프라인 편집 · Contribute/Adopt | 완료 |
-| **허브 연결 · 병합 화면** — 토큰은 OS 자격 증명 저장소에, 충돌은 세 칸 화면에서 사람이 고른다 | 완료 (Windows `safeStorage` 실동작 미검증) |
+| **허브 연결 · 병합 화면** — 토큰은 OS 자격 증명 저장소에, 충돌은 세 칸 화면에서 사람이 고른다 | 완료 (Windows `safeStorage` 실동작 확인) |
 | Codex 어댑터 · NSIS 패키징 | 사내 환경 필요 |
 
 자동 검사 381건이 통과합니다 (앱 359 · 허브 22). 세부 마일스톤은 [`docs/PLAN.md`](docs/PLAN.md) §12,
@@ -182,32 +182,13 @@ Jaro-Winkler 임계는 0.92에서 0.96으로 올려야 합니다.
 | 20 | NSIS + 포터블 패키징 | **B1** |
 | 21 | 오프라인 문서 | **A** |
 
-### Windows PC에서 확인할 것
+### Windows에서 확인한 것
 
-리눅스 컨테이너에서 끝낼 수 없는 항목입니다. 사내망이 아닌 개발 PC의 Windows면 됩니다.
-
-**1. 자격 증명 저장소** — `cd app && npm i && npm run build && npm run smoke:win`.
-출력의 "자격 증명 저장소" 줄이 `available=true` 여야 허브 연결이 열립니다. 리눅스
-개발 컨테이너는 키링이 없어 `basic_text` 로 떨어지고 앱이 설계대로 연결을 막습니다
-([`docs/M2-PLAN.md`](docs/M2-PLAN.md) §17.5).
-
-**2. 허브 연결과 병합 화면** — 허브를 옆에 띄워 놓고 눈으로 봅니다.
-
-```
-node --experimental-strip-types spikes/sync/local-hub.ts serve
-```
-
-주소와 토큰이 화면에 뜹니다. 앱에서 `ACME` 라는 이름의 폴더로 Vault를 만들고
-(폴더 이름이 공간 id가 됩니다) 좌측 레일의 [허브 연결]에 넣습니다. 위키 페이지를
-하나 만들어 동기화한 뒤 다른 창에서 아래를 돌리면 충돌이 납니다.
-
-```
-node --experimental-strip-types spikes/sync/local-hub.ts edit acme-corp
-```
-
-앱에서 같은 줄을 고치고 [동기화]를 누르면 세 칸 병합 화면이 뜹니다. 확인할 것은
-세 칸이 창을 넘치지 않는가, 충돌 표시가 남으면 저장 버튼이 잠기는가, 앱을 껐다 켜도
-연결이 유지되는가입니다.
+리눅스 컨테이너에서 끝낼 수 없던 항목을 사내망이 아닌 개발 PC의 Windows에서 확인했습니다
+(2026-09-06, 표본 하나). `safeStorage` 가 `available=true` 로 잡혔고 `npm run smoke:win`
+이 9/9로 통과했습니다. 허브 연결과 세 칸 병합 화면도 실제로 동작했으며 `hub-creds.json`
+에 평문 토큰이 남지 않았습니다. 실측값과 재현 방법은
+[`docs/M2-PLAN.md`](docs/M2-PLAN.md) §17.5에 있습니다.
 
 ### 사내 PC에서 받아 와야 하는 것
 

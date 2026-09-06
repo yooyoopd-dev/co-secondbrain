@@ -738,8 +738,8 @@ Electron `safeStorage` 는 Windows 에서 DPAPI 를, macOS 에서 Keychain 을 �
 | `safeStorage.isEncryptionAvailable()` | `false` |
 | `getSelectedStorageBackend()` | `basic_text` |
 
-이 컨테이너에서는 허브 연결이 설계대로 막힌다. Windows 에서는 `true` 가 나와야 하고
-**그 확인은 여기서 못 한다** (§17.5).
+이 컨테이너에서는 허브 연결이 설계대로 막힌다. Windows 에서 `true` 가 나오는 것은
+§17.5 에서 따로 확인했다.
 
 ### 17.3 토큰은 검증한 뒤에 저장한다
 
@@ -765,20 +765,52 @@ Electron `safeStorage` 는 Windows 에서 DPAPI 를, macOS 에서 Keychain 을 �
 `app/test/creds.test.ts` 의 "깨진 파일은 빈 것으로 본다" 가 잡았다. 매번 새 객체를 만들도록
 고쳤다. 이 검사는 원래 파일 복구를 보려던 것이었고 토큰 유출은 곁가지로 걸렸다.
 
-### 17.5 Windows 에서 확인해야 하는 것
+### 17.5 Windows 에서 실제로 재 봤다
 
-리눅스 컨테이너에서 끝낼 수 없는 항목이다. 개발 PC 의 Windows 에서 확인한다.
+리눅스 컨테이너에서 끝낼 수 없던 항목이다. 사내망이 아닌 개발 PC 의 Windows 에서
+확인했다 (2026-09-06, **n=1**). 일곱 항목이 전부 기대대로 나왔다.
 
-| 확인 | 기대값 | 방법 |
+| 확인 | 기대값 | 실측 |
 |---|---|---|
-| `safeStorage` 백엔드 | `available=true` | `npm run smoke:win` 출력의 "자격 증명 저장소" 줄 |
-| 토큰 보관 왕복 | 앱을 껐다 켜도 연결이 유지된다 | 허브 연결 후 재시작 |
-| 병합 화면 렌더링 | 세 칸이 창을 넘치지 않는다 | `spikes/sync/local-hub.ts` 로 충돌을 내고 눈으로 확인 |
-| 자격 증명 파일 권한 | 다른 계정이 못 읽는다 | `%APPDATA%` 아래 `hub-creds.json` |
+| `safeStorage` 백엔드 | `available=true` | `{"platform":"win32","available":true,"backend":null}` |
+| `smoke:win` 전체 | 9/9 | 9/9 전부 통과 |
+| 허브 연결 | writer 권한으로 붙는다 | 연결했습니다 (권한 writer) |
+| 토큰 보관 왕복 | 앱을 껐다 켜도 연결이 유지된다 | 유지됐다 |
+| 병합 화면 | 세 칸이 창을 넘치지 않는다 | 넘치지 않았다 |
+| 저장 잠금 | 충돌 표시가 남으면 저장 버튼이 잠긴다 | 잠겼다 |
+| 자격 증명 파일 | `hub-creds.json` 에 평문 토큰이 없다 | 평문이 없었다 |
 
-`spikes/sync/local-hub.ts` 가 그 확인을 위한 발판이다. `serve` 는 127.0.0.1 에 허브를
-띄우고 앱에 넣을 주소와 토큰을 찍는다. `edit <pageId>` 는 다른 사용자인 척 허브의 페이지를
-고쳐 충돌을 만든다. 자동 판정은 하지 않는다 — 사람이 화면을 보는 것이 목적이다.
+`{"backend":null}` 이 비어 있는 까닭은 스크립트가 리눅스에서만 백엔드 이름을 묻기
+때문이다 (`spikes/app/smoke.mjs`). Windows 에서 실제로 쓰이는 것은 DPAPI 다.
+
+**확실하지 않은 것** — Windows 판번호와 빌드를 기록하지 않았다. 다른 판에서도 같은지는
+표본 하나로 말할 수 없다. 사내 PC 는 정책이 다를 수 있어 그쪽에서 한 번 더 봐야 한다.
+
+#### 재현 방법
+
+```
+cd app
+npm install
+npm run build
+npm run smoke:win
+```
+
+출력의 "자격 증명 저장소" 줄이 `available=true` 여야 허브 연결이 열린다.
+
+병합 화면은 허브를 옆에 띄워 놓고 눈으로 본다. `spikes/sync/local-hub.ts` 가 그 발판이다.
+`serve` 는 127.0.0.1 에 허브를 띄우고 앱에 넣을 주소와 토큰을 찍는다. `edit <pageId>` 는
+다른 사용자인 척 허브의 페이지를 고쳐 충돌을 만든다. 자동 판정은 하지 않는다 — 사람이
+화면을 보는 것이 목적이다.
+
+```
+node --experimental-strip-types spikes/sync/local-hub.ts serve
+node --experimental-strip-types spikes/sync/local-hub.ts edit acme-corp
+```
+
+금고 폴더 이름이 공간 id 가 되므로 `serve` 가 찍는 공간 이름과 같게 만들어야 한다.
+페이지는 LLM 없이 손으로 써도 된다. front-matter 에 `id` `type` `title` 세 개만 있으면
+`parsePage` 가 받는다. 메모장으로 저장할 때 인코딩은 BOM 없는 UTF-8 로 둔다. BOM 이
+붙으면 front-matter 정규식이 여는 `---` 를 못 찾는다.
 
 `mode: 0o600` 은 리눅스 기준이고 **Windows 에서는 사실상 무시된다.** Windows 에서 파일을
 지키는 것은 DPAPI 암호화다. 다른 계정이 파일을 읽어도 자기 키로는 못 푼다. 확실하지 않은
