@@ -4,6 +4,13 @@
 // 원본: design/icon/co_second_brain_v2.png — 사용자가 준 그림이다. **다시 그리지 않는다.**
 // 여기서 하는 일은 두 가지뿐이다. 판 바깥 배경을 투명으로 바꾸고, 크기를 줄인다.
 //
+// 줄이는 방식이 곧 품질이다. 처음에는 500px 를 16px 로 한 번에 그렸는데 **16px 에
+// 어두운 픽셀이 하나도 남지 않았다** (가장 어두운 곳이 밝기 122). 3px 짜리 검은 선이
+// 31:1 로 평균되면 회색이 된다. 그래서 셋을 겹쳐 쓴다 —
+//   여백을 잘라 내고 (그림이 차지하는 픽셀을 25% 늘린다)
+//   절반씩 여러 번 줄이고 (한 번에 줄이면 표본이 성기다)
+//   작은 크기에는 언샤프를 건다 (평균으로 흐려진 경계를 되살린다).
+//
 // 배경을 지우는 방법은 색을 키로 잡는 것이 아니라 **네 모서리에서 시작하는 채움**이다.
 // 판 안쪽(#fcfbf8)과 바깥 배경(#ffffff)이 둘 다 거의 흰색이라 색으로 자르면 판 속까지
 // 뚫린다. 모서리에서 이어진 영역만 지우면 판 테두리에서 멈춘다.
@@ -33,6 +40,8 @@ const SIZES = [16, 32, 48, 64, 128, 256, 512];
 const ICO_SIZES = [16, 32, 48, 64, 128, 256];
 /** 배경으로 볼 밝기 하한. 판 테두리보다 위여야 판이 안 뚫린다 */
 const BG_MIN_LUMA = 243;
+/** 이 크기 이하에는 언샤프를 건다. 128 이상은 원본 그대로가 낫다 */
+const SHARPEN_MAX = 64;
 
 // smoke.mjs 와 같은 방식. ESM 은 NODE_PATH 를 안 보므로 전역 위치를 npm 에게 묻는다.
 async function loadPlaywright() {
@@ -69,7 +78,7 @@ await page.setContent('<canvas id="c"></canvas>');
  * 그림자는 반투명으로 남긴다 — 딱 잘라 내면 판 가장자리가 계단처럼 보인다.
  */
 const dataUrls = await page.evaluate(
-  async ([src, sizes, bgMin]) => {
+  async ([src, sizes, bgMin, sharpenMax]) => {
     const img = new Image();
     img.src = src;
     await img.decode();
@@ -131,21 +140,87 @@ const dataUrls = await page.evaluate(
 
     g.putImageData(im, 0, 0);
 
-    const out = {};
-    for (const s of sizes) {
+    // 그림이 실제로 차지하는 네모를 찾아 여백을 버린다. 정사각으로 맞춰 비율을 지킨다.
+    let x0 = w;
+    let y0 = h;
+    let x1 = -1;
+    let y1 = -1;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (px[(y * w + x) * 4 + 3] <= 16) continue;
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+    const side = Math.max(x1 - x0, y1 - y0) + 1;
+    const cx = (x0 + x1) / 2;
+    const cy = (y0 + y1) / 2;
+    const crop = { x: Math.round(cx - side / 2), y: Math.round(cy - side / 2), s: side };
+
+    /** 절반씩 줄인다. 한 번에 줄이면 원본 표본이 성겨 선이 회색으로 뭉갠다 */
+    function shrink(src, srcBox, target) {
+      let cur = document.createElement('canvas');
+      cur.width = srcBox.s;
+      cur.height = srcBox.s;
+      cur.getContext('2d').drawImage(src, srcBox.x, srcBox.y, srcBox.s, srcBox.s, 0, 0, srcBox.s, srcBox.s);
+      while (cur.width > target * 2) {
+        const half = Math.max(target, Math.floor(cur.width / 2));
+        const n = document.createElement('canvas');
+        n.width = half;
+        n.height = half;
+        const ng = n.getContext('2d');
+        ng.imageSmoothingEnabled = true;
+        ng.imageSmoothingQuality = 'high';
+        ng.drawImage(cur, 0, 0, half, half);
+        cur = n;
+      }
       const d = document.createElement('canvas');
-      d.width = s;
-      d.height = s;
+      d.width = target;
+      d.height = target;
       const dg = d.getContext('2d');
       dg.imageSmoothingEnabled = true;
       dg.imageSmoothingQuality = 'high';
-      dg.drawImage(c, 0, 0, s, s);
+      dg.drawImage(cur, 0, 0, target, target);
+      return d;
+    }
+
+    /** 언샤프. 평균으로 흐려진 경계를 되살린다. 알파는 건드리지 않는다 */
+    function sharpen(canvas, amount) {
+      const s = canvas.width;
+      const cg = canvas.getContext('2d', { willReadFrequently: true });
+      const src = cg.getImageData(0, 0, s, s);
+      const dst = cg.createImageData(s, s);
+      for (let y = 0; y < s; y++) {
+        for (let x = 0; x < s; x++) {
+          const i = (y * s + x) * 4;
+          for (let k = 0; k < 3; k++) {
+            const up = y > 0 ? src.data[i - s * 4 + k] : src.data[i + k];
+            const dn = y < s - 1 ? src.data[i + s * 4 + k] : src.data[i + k];
+            const lf = x > 0 ? src.data[i - 4 + k] : src.data[i + k];
+            const rt = x < s - 1 ? src.data[i + 4 + k] : src.data[i + k];
+            const v = src.data[i + k] * (1 + 4 * amount) - amount * (up + dn + lf + rt);
+            dst.data[i + k] = Math.max(0, Math.min(255, Math.round(v)));
+          }
+          dst.data[i + 3] = src.data[i + 3];
+        }
+      }
+      cg.putImageData(dst, 0, 0);
+      return canvas;
+    }
+
+    const out = {};
+    for (const s of sizes) {
+      let d = shrink(c, crop, s);
+      if (s <= sharpenMax) d = sharpen(d, s <= 32 ? 0.9 : 0.5);
       out[s] = d.toDataURL('image/png');
     }
     out.source = `${w}x${h}`;
+    out.crop = `${crop.s}x${crop.s}`;
     return out;
   },
-  [source, SIZES, BG_MIN_LUMA],
+  [source, SIZES, BG_MIN_LUMA, SHARPEN_MAX],
 );
 await browser.close();
 
@@ -193,7 +268,7 @@ const ok = (name, cond, got) => {
   if (!cond) fails.push(name);
 };
 
-console.log(`      원본: ${path.basename(SRC)} ${dataUrls.source}`);
+console.log(`      원본: ${path.basename(SRC)} ${dataUrls.source} → 여백을 자른 뒤 ${dataUrls.crop}`);
 
 for (const size of SIZES) {
   const { width, height, hasAlpha } = readPngHeader(pngs.get(size));
@@ -206,13 +281,27 @@ const at = (x, y) => [...px.slice((y * 64 + x) * 4, (y * 64 + x) * 4 + 4)];
 
 // 모서리는 투명해야 한다. 배경이 남았으면 여기서 걸린다.
 ok('모서리가 투명하다', at(0, 0)[3] === 0 && at(63, 0)[3] === 0 && at(0, 63)[3] === 0, at(0, 0));
-// 판 속은 지워지면 안 된다. 색으로 잘랐다면 여기가 뚫린다.
-ok('판 속이 남아 있다', at(32, 12)[3] > 200, at(32, 12));
-// 원본의 크림 판이 그대로 온다 — 다시 그린 것이 아니라는 확인
-const plate = at(32, 12);
-ok('판 색이 크림이다', plate[0] > 230 && plate[2] < plate[0], plate);
-// 가운데는 뇌·악수의 숯색 선이 지난다
+// 가운데는 뇌·악수가 지난다. 판 속이 통째로 뚫렸으면 여기가 비어 있다.
 ok('가운데에 그림이 있다', at(32, 32)[3] > 200, at(32, 32));
+
+// 원본의 크림 판이 그대로 온다 — 다시 그린 것도, 색으로 잘라 뚫린 것도 아니라는 확인.
+// 좌표 하나를 찍으면 여백을 자를 때마다 낡는다. 넓이 비율로 본다.
+let cream = 0;
+let solid = 0;
+for (let i = 0; i < 64 * 64; i++) {
+  if (px[i * 4 + 3] < 128) continue;
+  solid += 1;
+  if (px[i * 4] > 235 && px[i * 4 + 2] < px[i * 4]) cream += 1;
+}
+const creamPct = Number(((cream / solid) * 100).toFixed(1));
+ok('판이 크림으로 남아 있다', creamPct > 25, { creamPct, solid });
+
+// 축소본이 뭉갰는가. 16px 에 어두운 픽셀이 하나도 없던 것이 이 검사를 만든 이유다.
+for (const size of [16, 32]) {
+  const { minLuma, darkPct } = ink(pngs.get(size), size);
+  ok(`${size}px 에 잉크가 남는다`, minLuma <= 90, { minLuma, darkPct });
+  console.log(`      ${size}px 최소 밝기 ${minLuma} · 어두운 픽셀 ${darkPct}%`);
+}
 
 const icoBuf = fs.readFileSync(ICO);
 ok('ico 가 여섯 크기를 담는다', icoBuf.readUInt16LE(4) === ICO_SIZES.length, icoBuf.readUInt16LE(4));
@@ -266,4 +355,20 @@ function pixels(buf) {
     }
   }
   return out;
+}
+
+/** 축소본의 잉크. 가장 어두운 픽셀과 어두운 픽셀 비율 — 뭉갰는지 이 둘로 본다 */
+function ink(buf, size) {
+  const px = pixels(buf);
+  let min = 255;
+  let dark = 0;
+  let opaque = 0;
+  for (let i = 0; i < size * size; i++) {
+    if (px[i * 4 + 3] < 128) continue;
+    opaque += 1;
+    const l = 0.2126 * px[i * 4] + 0.7152 * px[i * 4 + 1] + 0.0722 * px[i * 4 + 2];
+    if (l < min) min = l;
+    if (l < 110) dark += 1;
+  }
+  return { minLuma: Math.round(min), darkPct: Number(((dark / opaque) * 100).toFixed(1)) };
 }
