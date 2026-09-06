@@ -9,7 +9,7 @@ import type { Vault } from '../vault.ts';
 
 export interface MirrorEntry {
   pageId: string;
-  /** Vault 기준 상대 경로. `wiki/entities/acme-corp.md` */
+  /** Vault 기준 상대 경로. `02_NOTES/entities/acme-corp.md` */
   path: string;
   /** 허브 판본. 다음 쓰기의 If-Match 값 */
   version: number;

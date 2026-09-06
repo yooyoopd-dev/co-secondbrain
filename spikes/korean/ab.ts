@@ -1,6 +1,6 @@
 // 한국어 작문 규칙 A/B 재측정. docs/ROADMAP.md 9번, PLAN.md §9.6
 //
-// 질문: `schema/AGENTS.md` 의 "한국어 작문" 절이 실제로 산출물의 AI 티를 줄이는가.
+// 질문: `09_TEMPLATES/AGENTS.md` 의 "한국어 작문" 절이 실제로 산출물의 AI 티를 줄이는가.
 // M0 에서는 표본이 작아 판단을 미뤘다. 여기서 팔당 20건으로 다시 잰다.
 //
 // 방법: 같은 원본 20건을 두 번 돌린다. A 는 작문 규칙을 뺀 규약, B 는 넣은 규약.
@@ -92,7 +92,7 @@ ${c.chunks.map(([loc, t]) => `- ${loc}: ${t}`).join('\n')}
 
 ${c.chunks.map(([loc]) => `${c.id}#${loc}`).join(' · ')}
 
-제목은 ${c.org} 이고 path 는 wiki/entities/e${c.id.replace(/[^0-9]/g, '')}.md 다.
+제목은 ${c.org} 이고 path 는 02_NOTES/entities/e${c.id.replace(/[^0-9]/g, '')}.md 다.
 \`## 개요\` 절에 두세 문장으로 직접 정리해 써라.`;
 }
 

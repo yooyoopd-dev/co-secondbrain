@@ -3,7 +3,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { SearchIndex, type Db } from '../core/search.ts';
-import { openVault, createVault, importSource, appendLog, setHub, PERSONAL_ID, type Vault } from '../core/vault.ts';
+import { openVault, createVault, importSource, appendLog, setHub, EXTRACTED_DIR, PERSONAL_ID, SOURCES_DIR, TEMPLATES_DIR, type Vault } from '../core/vault.ts';
+import { CORE_CONTEXT_PATH, EMPTY_CORE_CONTEXT, coreContextBlock, parseCoreContext, serializeCoreContext, type CoreContext } from '../core/context.ts';
 import { extractFile, buildThreads } from '../core/extract/index.ts';
 import { extractEmail, type MailMeta } from '../core/extract/email.ts';
 import { safeJoin } from '../core/security.ts';
@@ -13,7 +14,7 @@ import { snapshot } from '../core/history.ts';
 import { readWikiPages, writeIndex } from '../core/wiki.ts';
 import { createCli } from '../core/agent/index.ts';
 import { validateChangeSet } from '../core/agent/gemini.ts';
-import { MCP_CAPABLE, route, type TaskKind } from '../core/agent/router.ts';
+import { DEFAULT_ROUTING, MCP_CAPABLE, route, type TaskKind } from '../core/agent/router.ts';
 import { hashContent, markProposed, planWork, readManifest, recordSource, writeManifest, type Manifest, type SourceState, type WorkPlan } from '../core/cache.ts';
 import { DEFAULT_MONTHLY_USD, EMPTY_LOG, add as addSpend, status as spendStatus, type Limits, type SpendLog, type Status } from '../core/spend.ts';
 import { read as readSpend, write as writeSpend } from '../core/spend-file.ts';
@@ -34,7 +35,17 @@ import { disposeWorkdir, prepareWorkdir } from '../core/agent/workdir.ts';
 import type { Extraction, Relation } from '../core/types.ts';
 import { hubClient, pendingChanges, resolveConflict, scanLocal, sync, readState, HubError, HubOffline, type HubClient, type SyncConflict } from '../core/sync/index.ts';
 import type { TokenStore } from './creds.ts';
-import type { AskResult, HubStatus, IngestResult, JudgmentResult, ProposeResult, ResolveResult, SourceSummary, SyncResult } from './ipc.ts';
+import type { AppSettings, AskResult, HubStatus, IngestResult, JudgmentResult, ProposeResult, ResolveResult, SourceSummary, SyncResult } from './ipc.ts';
+
+/**
+ * 화면에 띄우는 공급자 목록. **설치 여부는 앱을 켤 때 한 번 본다** —
+ * `detect()` 가 프로세스를 띄우므로 화면을 열 때마다 다시 세면 느려진다.
+ */
+const PROVIDERS: readonly { id: ProviderId; label: string; note: string }[] = [
+  { id: 'claude-code', label: 'Claude Code', note: '스키마를 강제한다. 내장 MCP 서버에 붙는다' },
+  { id: 'gemini', label: 'Gemini', note: '토큰 상한이 느슨하다. MCP 에는 못 붙는다' },
+  { id: 'codex', label: 'Codex', note: '어댑터가 아직 없다 (ROADMAP 19번)' },
+];
 
 export class Store {
   #vault: Vault | null = null;
@@ -50,6 +61,10 @@ export class Store {
   #limits: Limits = { 'claude-code': DEFAULT_MONTHLY_USD };
   /** detect() 는 프로세스를 띄운다. 한 번만 한다 */
   #available: ProviderId[] | null = null;
+  /** 사용자가 설정에서 고정한 공급자. `null` 이면 작업 종류별 라우팅에 맡긴다 */
+  #provider: ProviderId | null = null;
+  /** 공급자 선택은 금고가 아니라 이 PC 의 것이다. 금고를 바꿔도 따라오지 않는다 */
+  readonly #prefsFile: string | null;
 
   /** MCP 서버를 어떻게 띄울지. 개발과 패키징본이 달라 main 이 정한다 */
   readonly #mcpLaunch: ((vaultRoot: string) => McpLaunch) | null;
@@ -64,12 +79,14 @@ export class Store {
   constructor(
     opts: {
       spendFile?: string;
+      prefsFile?: string;
       mcpLaunch?: (vaultRoot: string) => McpLaunch;
       tokens?: TokenStore;
       hubFetch?: typeof globalThis.fetch;
     } = {},
   ) {
     this.#spendFile = opts.spendFile ?? null;
+    this.#prefsFile = opts.prefsFile ?? null;
     this.#mcpLaunch = opts.mcpLaunch ?? null;
     this.#tokens = opts.tokens ?? null;
     this.#hubFetch = opts.hubFetch ?? globalThis.fetch;
@@ -154,7 +171,7 @@ export class Store {
 
   async listSources(): Promise<SourceSummary[]> {
     const v = this.#require();
-    const dir = safeJoin(v.root, 'extracted');
+    const dir = safeJoin(v.root, EXTRACTED_DIR);
     const out: SourceSummary[] = [];
     for (const name of await fs.readdir(dir)) {
       if (!name.endsWith('.json') || name.startsWith('__')) continue;
@@ -225,7 +242,7 @@ export class Store {
   async readSource(sourceId: string): Promise<Extraction | null> {
     const v = this.#require();
     try {
-      return JSON.parse(await fs.readFile(safeJoin(v.root, 'extracted', `${sourceId}.json`), 'utf8')) as Extraction;
+      return JSON.parse(await fs.readFile(safeJoin(v.root, EXTRACTED_DIR, `${sourceId}.json`), 'utf8')) as Extraction;
     } catch {
       return null;
     }
@@ -246,7 +263,7 @@ export class Store {
         states.push({
           sourceId: s.sourceId,
           filename: s.filename,
-          contentHash: hashContent(await fs.readFile(safeJoin(v.root, 'sources', s.filename))),
+          contentHash: hashContent(await fs.readFile(safeJoin(v.root, SOURCES_DIR, s.filename))),
         });
       } catch {
         // 원본이 지워졌으면 건너뛴다
@@ -270,6 +287,72 @@ export class Store {
     return found;
   }
 
+  /* ---------- 설정 (ipc.ts AppSettings) ---------- */
+
+  /**
+   * 설정 화면 한 벌. **금고 경로는 여기서만 나간다** — 오류 기록에는 안 넣는다
+   * (main.ts `environment`). 사람이 직접 보는 화면과 통째로 복사되는 기록은 다르다.
+   */
+  async settings(version: string): Promise<AppSettings> {
+    const installed = await this.available();
+    return {
+      version,
+      vaultRoot: this.#vault?.root ?? null,
+      vaultTitle: this.#vault?.config.title ?? null,
+      personal: this.#vault ? this.#vault.config.id === PERSONAL_ID : null,
+      provider: this.#provider,
+      providers: PROVIDERS.map((p) => ({ ...p, installed: installed.includes(p.id) })),
+    };
+  }
+
+  /**
+   * 쓸 CLI 를 고정한다. `null` 이면 작업 종류별 라우팅으로 돌아간다.
+   *
+   * 고정한 공급자가 그 작업의 조건을 못 맞추면 **조용히 다른 데로 넘기지 않고 거절한다**
+   * (router.ts). 왜 품질이 달라졌는지 모르는 것보다 안 도는 편이 낫다.
+   */
+  async setProvider(id: ProviderId | null): Promise<void> {
+    this.#provider = id;
+    if (this.#prefsFile) await fs.writeFile(this.#prefsFile, JSON.stringify({ provider: id }, null, 2), 'utf8');
+  }
+
+  /** 저장해 둔 공급자 선택을 읽는다. 파일이 없거나 깨졌으면 자동으로 둔다. */
+  async loadPrefs(): Promise<void> {
+    if (!this.#prefsFile) return;
+    try {
+      const raw: unknown = JSON.parse(await fs.readFile(this.#prefsFile, 'utf8'));
+      const id = (raw as { provider?: unknown }).provider;
+      this.#provider = PROVIDERS.some((p) => p.id === id) ? (id as ProviderId) : null;
+    } catch {
+      this.#provider = null;
+    }
+  }
+
+  /** 고정 공급자를 라우터가 읽는 형태로. 안 골랐으면 빈 것이라 정책이 그대로 돈다 */
+  #overrides(): Partial<Record<TaskKind, ProviderId>> {
+    const o: Partial<Record<TaskKind, ProviderId>> = {};
+    if (!this.#provider) return o;
+    for (const k of Object.keys(DEFAULT_ROUTING) as TaskKind[]) o[k] = this.#provider;
+    return o;
+  }
+
+  /* ---------- 나의 기준 맥락 (core/context.ts) ---------- */
+
+  /** 파일이 없으면 빈 것을 준다. 없는 것은 오류가 아니다 */
+  async coreContext(): Promise<CoreContext> {
+    const v = this.#require();
+    try {
+      return parseCoreContext(await fs.readFile(safeJoin(v.root, CORE_CONTEXT_PATH), 'utf8'));
+    } catch {
+      return { ...EMPTY_CORE_CONTEXT };
+    }
+  }
+
+  async setCoreContext(ctx: CoreContext): Promise<void> {
+    const v = this.#require();
+    await fs.writeFile(safeJoin(v.root, CORE_CONTEXT_PATH), serializeCoreContext(ctx), 'utf8');
+  }
+
   /** 공급자별 이번 달 소비와 남은 문서 수. 화면에 띄운다. */
   spendStatus(now: string = new Date().toISOString()): Status[] {
     return (['claude-code', 'gemini'] as const).map((p) => spendStatus(this.#spend, this.#limits, p, now));
@@ -284,14 +367,14 @@ export class Store {
     const overLimit = this.spendStatus(now).filter((s) => s.level === 'over').map((s) => s.provider);
     const picked = provider
       ? { ok: true as const, provider, fallback: false, why: '호출자 지정' }
-      : route(kind, { available: await this.available(), overLimit });
+      : route(kind, { available: await this.available(), overLimit, overrides: this.#overrides() });
     if (!picked.ok) return { ok: false, error: picked.reason };
 
     const cli = createCli(picked.provider);
     // 규약 파일은 배치 내내 같은 바이트여야 캐시가 산다 (M2-PLAN.md §2.1).
     // 이름은 CLI 마다 다르다 (PLAN.md §7.3).
-    const agentsMd = await fs.readFile(safeJoin(v.root, 'schema/AGENTS.md'), 'utf8');
-    const wd = await prepareWorkdir({ [cli.conventionFile]: conventionFile(agentsMd) });
+    const agentsMd = await fs.readFile(safeJoin(v.root, `${TEMPLATES_DIR}/AGENTS.md`), 'utf8');
+    const wd = await prepareWorkdir({ [cli.conventionFile]: conventionFile(agentsMd, coreContextBlock(await this.coreContext())) });
     try {
       const r = await cli.run(
         { workdir: wd.root, prompt: promptFor(ext, await this.#wikiRefs()), validate: validateChangeSet },
@@ -302,7 +385,7 @@ export class Store {
       if (this.#spendFile) await writeSpend(this.#spendFile, this.#spend);
       if (!r.ok) return { ok: false, error: r.error ?? '변경안을 받지 못했습니다' };
 
-      const hash = hashContent(await fs.readFile(safeJoin(v.root, 'sources', ext.filename)));
+      const hash = hashContent(await fs.readFile(safeJoin(v.root, SOURCES_DIR, ext.filename)));
       this.#manifest = markProposed(this.#manifest, hash, picked.provider, now);
       await writeManifest(v, this.#manifest);
 
@@ -358,7 +441,7 @@ export class Store {
     const overLimit = this.spendStatus(now).filter((s) => s.level === 'over').map((s) => s.provider);
     const picked = provider
       ? { ok: true as const, provider, fallback: false, why: '호출자 지정' }
-      : route('query', { available: await this.available(), overLimit });
+      : route('query', { available: await this.available(), overLimit, overrides: this.#overrides() });
     if (!picked.ok) return { ok: false, error: picked.reason };
 
     const cli = createCli(picked.provider);
@@ -367,7 +450,7 @@ export class Store {
       const r = await cli.run(
         {
           workdir: wd.root,
-          prompt: questionPrompt(question),
+          prompt: questionPrompt(question, coreContextBlock(await this.coreContext())),
           mcp: { configPath: safeJoin(wd.root, 'mcp.json'), allowedTools: ALLOWED_TOOLS },
           validate: (d) => parseAnswer(d).reason,
         },
@@ -405,7 +488,7 @@ export class Store {
     const overLimit = this.spendStatus(now).filter((s) => s.level === 'over').map((s) => s.provider);
     const picked = provider
       ? { ok: true as const, provider, fallback: false, why: '호출자 지정' }
-      : route('lint.judgment', { available: await this.available(), overLimit });
+      : route('lint.judgment', { available: await this.available(), overLimit, overrides: this.#overrides() });
     if (!picked.ok) return { ok: false, error: picked.reason };
 
     const { entries } = await readWikiPages(v);
@@ -618,7 +701,7 @@ export class Store {
   async #persist(ext: Extraction): Promise<void> {
     const v = this.#require();
     await fs.writeFile(
-      safeJoin(v.root, 'extracted', `${ext.sourceId}.json`),
+      safeJoin(v.root, EXTRACTED_DIR, `${ext.sourceId}.json`),
       JSON.stringify(ext, null, 1),
       'utf8',
     );
@@ -627,7 +710,7 @@ export class Store {
   async #writeRelations(name: string, relations: readonly Relation[]): Promise<void> {
     const v = this.#require();
     await fs.writeFile(
-      safeJoin(v.root, 'extracted', `${name}.relations.json`),
+      safeJoin(v.root, EXTRACTED_DIR, `${name}.relations.json`),
       JSON.stringify(relations, null, 1),
       'utf8',
     );
@@ -638,7 +721,7 @@ export class Store {
     const out: MailMeta[] = [];
     for (const s of await this.listSources()) {
       if (s.kind !== 'eml' && s.kind !== 'msg') continue;
-      const file = safeJoin(v.root, 'sources', s.filename);
+      const file = safeJoin(v.root, SOURCES_DIR, s.filename);
       try {
         out.push((await extractEmail(file, s.sourceId)).meta);
       } catch {
@@ -651,9 +734,9 @@ export class Store {
   /** 색인은 캐시다. 열 때 extracted/ 에서 다시 만든다. */
   async #reindexFromDisk(): Promise<void> {
     const v = this.#require();
-    for (const name of await fs.readdir(safeJoin(v.root, 'extracted'))) {
+    for (const name of await fs.readdir(safeJoin(v.root, EXTRACTED_DIR))) {
       if (!name.endsWith('.json') || name.startsWith('__') || name.endsWith('.relations.json')) continue;
-      const e = JSON.parse(await fs.readFile(safeJoin(v.root, 'extracted', name), 'utf8')) as Extraction;
+      const e = JSON.parse(await fs.readFile(safeJoin(v.root, EXTRACTED_DIR, name), 'utf8')) as Extraction;
       this.#index!.indexSource(e.sourceId, e.chunks);
     }
   }

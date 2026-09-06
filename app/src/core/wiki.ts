@@ -7,10 +7,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { safeJoin } from './security.ts';
 import { citations, parsePage, type Page, type PageType } from './page.ts';
-import type { Vault } from './vault.ts';
+import { NOTES_DIR, type Vault } from './vault.ts';
 
 export interface WikiEntry {
-  /** Vault 기준 상대 경로. `wiki/entities/acme-corp.md` */
+  /** Vault 기준 상대 경로. `02_NOTES/entities/acme-corp.md` */
   path: string;
   page: Page;
 }
@@ -29,7 +29,7 @@ export async function readWikiPages(vault: Vault): Promise<{ entries: WikiEntry[
   const broken: { path: string; reason: string }[] = [];
 
   for (const s of SECTIONS) {
-    const dir = safeJoin(vault.root, 'wiki', s.dir);
+    const dir = safeJoin(vault.root, NOTES_DIR, s.dir);
     let names: string[];
     try {
       names = await fs.readdir(dir);
@@ -38,7 +38,7 @@ export async function readWikiPages(vault: Vault): Promise<{ entries: WikiEntry[
     }
     for (const name of names.sort()) {
       if (!name.endsWith('.md')) continue;
-      const rel = `wiki/${s.dir}/${name}`;
+      const rel = `02_NOTES/${s.dir}/${name}`;
       try {
         entries.push({ path: rel, page: parsePage(await fs.readFile(path.join(dir, name), 'utf8')) });
       } catch (e) {
@@ -78,7 +78,7 @@ export function buildIndex(entries: readonly WikiEntry[]): string {
 /** `- [[entities/acme-corp|에이콤(주)]] — 요약. \`원본 4 · 2026-09-03\`` */
 function line(e: WikiEntry): string {
   const f = e.page.front;
-  const target = e.path.replace(/^wiki\//, '').replace(/\.md$/, '');
+  const target = e.path.replace(/^02_NOTES\//, '').replace(/\.md$/, '');
   const sources = new Set(citations(e.page.body).map((c) => c.sourceId));
   for (const c of f.claims) if (c.source?.includes('#')) sources.add(c.source.split('#')[0]!);
 

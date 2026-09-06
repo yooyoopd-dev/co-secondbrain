@@ -15,7 +15,7 @@ const entry = (dir: string, slug: string, type: PageType, title: string, summary
   page.front.summary = summary;
   page.front.updated = '2026-09-03T10:00:00.000Z';
   page.body = body;
-  return { path: `wiki/${dir}/${slug}.md`, page };
+  return { path: `02_NOTES/${dir}/${slug}.md`, page };
 };
 
 test('빈 위키는 빈 인덱스를 만든다', () => {
@@ -76,12 +76,12 @@ test('디스크에서 읽어 조립하고 다시 쓴다', async () => {
 
 test('깨진 페이지는 인덱스를 막지 않고 따로 보고된다', async () => {
   const v = await vault();
-  await fs.writeFile(path.join(v.root, 'wiki/entities/broken.md'), 'front-matter 가 없다\n', 'utf8');
+  await fs.writeFile(path.join(v.root, '02_NOTES/entities/broken.md'), 'front-matter 가 없다\n', 'utf8');
   const good = entry('entities', 'ok', 'entity', '정상', '요약.');
   await fs.writeFile(path.join(v.root, good.path), serializePage(good.page), 'utf8');
 
   const { entries, broken } = await readWikiPages(v);
   assert.equal(entries.length, 1);
   assert.equal(broken.length, 1);
-  assert.equal(broken[0]?.path, 'wiki/entities/broken.md');
+  assert.equal(broken[0]?.path, '02_NOTES/entities/broken.md');
 });

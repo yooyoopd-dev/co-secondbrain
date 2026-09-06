@@ -10,6 +10,9 @@ import { IPC } from './ipc.ts';
 import { Store } from './store.ts';
 import { credStore, type Cipher } from './creds.ts';
 import { SOURCE_KIND_BY_EXT, type Classification } from '../core/types.ts';
+import { OUTPUT_DIR } from '../core/vault.ts';
+import type { CoreContext } from '../core/context.ts';
+import type { ProviderId } from '../core/agent/types.ts';
 import { LogBuffer, formatLog } from '../core/log.ts';
 import type { Answer } from '../core/query.ts';
 
@@ -39,6 +42,8 @@ const store = new Store({
   // 토큰은 Vault 폴더가 아니라 사용자 데이터 폴더에 암호문으로 둔다 (creds.ts)
   tokens: credStore(path.join(app.getPath('userData'), 'hub-creds.json'), cipher),
   spendFile: path.join(app.getPath('userData'), 'spend.json'),
+  // 공급자 선택은 금고가 아니라 이 PC 의 것이다
+  prefsFile: path.join(app.getPath('userData'), 'prefs.json'),
   // CLI 가 MCP 서버를 서브프로세스로 띄운다. 패키징본에는 node 가 없으므로
   // Electron 자신을 ELECTRON_RUN_AS_NODE 로 돌린다 (PLAN.md §7.2).
   mcpLaunch: (vaultRoot) => ({
@@ -132,6 +137,9 @@ function registerIpc(): void {
 
   handle(IPC.currentVault, () => store.vault?.config ?? null);
 
+  // 첫 화면으로 돌아간다. 검토 대기는 여기서 사라지므로 화면이 먼저 확인을 받는다.
+  handle(IPC.closeVault, () => store.close());
+
   handle(IPC.pickAndIngest, async (_e, classification: Classification) => {
     const r = await dialog.showOpenDialog({
       title: '문서 추가',
@@ -175,7 +183,8 @@ function registerIpc(): void {
     if (!vault) return null;
     const r = await dialog.showSaveDialog({
       title: '슬라이드 내보내기',
-      defaultPath: `${vault.config.title}.md`,
+      // 금고의 `03_OUTPUT/` 에서 시작한다. 다른 곳을 고를 수는 있다
+      defaultPath: path.join(vault.root, OUTPUT_DIR, `${vault.config.title}.md`),
       filters: [{ name: 'Marp 마크다운', extensions: ['md'] }],
     });
     if (r.canceled || !r.filePath) return null;
@@ -184,6 +193,16 @@ function registerIpc(): void {
   });
 
   /* 오류 기록 — 무엇이 실패했는지 사람이 통째로 옮길 수 있어야 한다 */
+
+  /* 설정 — 금고 경로는 여기서만 나간다. 오류 기록에는 안 들어간다 */
+
+  handle(IPC.settings, () => store.settings(app.getVersion()));
+  handle(IPC.setProvider, (_e, id: ProviderId | null) => store.setProvider(id));
+
+  /* 나의 기준 맥락 */
+
+  handle(IPC.coreContext, () => store.coreContext());
+  handle(IPC.setCoreContext, (_e, ctx: CoreContext) => store.setCoreContext(ctx));
 
   handle(IPC.logs, () => ({ entries: log.entries(), errors: log.errorCount() }));
   handle(IPC.clearLogs, () => log.clear());
@@ -226,7 +245,8 @@ process.on('unhandledRejection', (err) => log.fail('main:rejection', err));
 // 창을 두 개 띄우면 같은 Vault 를 두 Store 가 잡는다. 하나만 돈다.
 if (!app.requestSingleInstanceLock()) app.quit();
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
+  await store.loadPrefs();
   registerIpc();
   const win = createWindow();
   app.on('second-instance', () => {

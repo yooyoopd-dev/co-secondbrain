@@ -52,11 +52,11 @@ let escaped = 0;
 for (const [title, label] of ATTACKS) {
   const shown = JSON.stringify(title).slice(0, 42);
   try {
-    const p = safeJoin(VAULT, 'wiki/entities', title);
-    const ok = p.startsWith('/vault/wiki/entities/');
+    const p = safeJoin(VAULT, '02_NOTES/entities', title);
+    const ok = p.startsWith('/vault/02_NOTES/entities/');
     if (ok) inside++;
     else escaped++;
-    console.log(`  ${ok ? 'OK  ' : 'FAIL'} ${label.padEnd(16)} ${shown.padEnd(44)} → ${p.replace('/vault/wiki/entities/', '')}`);
+    console.log(`  ${ok ? 'OK  ' : 'FAIL'} ${label.padEnd(16)} ${shown.padEnd(44)} → ${p.replace('/vault/02_NOTES/entities/', '')}`);
   } catch (e) {
     blocked++;
     console.log(`  차단 ${label.padEnd(16)} ${shown.padEnd(44)} → ${e.message}`);

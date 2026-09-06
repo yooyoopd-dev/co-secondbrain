@@ -23,7 +23,7 @@ const { openDb } = await import(new URL('db.ts', HUB).href);
 const { createHub } = await import(new URL('server.ts', HUB).href);
 
 const ADMIN = 'spike-admin-key';
-const REL = 'wiki/entities/acme-corp.md';
+const REL = '02_NOTES/entities/acme-corp.md';
 const fails: string[] = [];
 const check = (ok: boolean, what: string): void => {
   console.log(`  ${ok ? 'OK  ' : 'FAIL'} ${what}`);

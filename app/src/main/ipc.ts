@@ -11,6 +11,8 @@ import type { ScanEstimate } from '../core/tokens.ts';
 import type { SyncConflict, SyncReport } from '../core/sync/index.ts';
 import type { LogEntry } from '../core/log.ts';
 import type { Classification } from '../core/types.ts';
+import type { ProviderId } from '../core/agent/types.ts';
+import type { CoreContext } from '../core/context.ts';
 
 export interface IngestResult {
   ok: string[];
@@ -71,6 +73,20 @@ export type ResolveResult =
   | { ok: true; version: number; conflicts: SyncConflict[] }
   | { ok: false; error: string; conflicts?: SyncConflict[] };
 
+/** 설정 화면 한 벌 */
+export interface AppSettings {
+  /** `app.getVersion()` — package.json 의 값이다 */
+  version: string;
+  /** 열려 있는 금고의 폴더. 안 열었으면 null */
+  vaultRoot: string | null;
+  vaultTitle: string | null;
+  /** 개인 금고인가. 안 열었으면 null */
+  personal: boolean | null;
+  /** 사용자가 고정한 공급자. null 이면 작업 종류별 라우팅 */
+  provider: ProviderId | null;
+  providers: { id: ProviderId; label: string; note: string; installed: boolean }[];
+}
+
 /** 오류 기록 한 벌. 배지에 쓸 오류 건수를 같이 준다 */
 export interface LogSnapshot {
   entries: LogEntry[];
@@ -81,6 +97,8 @@ export interface LogSnapshot {
 export interface SbApi {
   pickVault(mode: 'open' | 'create'): Promise<VaultConfig | null>;
   currentVault(): Promise<VaultConfig | null>;
+  /** 금고를 닫고 첫 화면으로 돌아간다. 검토 대기와 충돌은 같이 버려진다 */
+  closeVault(): Promise<void>;
   /** 파일 선택 대화상자를 열어 넣는다. 등급은 넣는 사람이 고른다 */
   pickAndIngest(classification: Classification): Promise<IngestResult>;
   /** `00_INBOX/` 에 놓인 파일 목록. 앱은 이 폴더를 건드리지 않는다 */
@@ -123,6 +141,15 @@ export interface SbApi {
   /** 사람이 고른 병합 결과. 충돌 표시가 남아 있으면 거절당한다 */
   resolveConflict(pageId: string, merged: string): Promise<ResolveResult>;
 
+  /* 설정 */
+  settings(): Promise<AppSettings>;
+  /** null 이면 작업 종류별 라우팅으로 되돌린다 */
+  setProvider(id: ProviderId | null): Promise<void>;
+
+  /* 나의 기준 맥락 — `09_TEMPLATES/me.md`. 동기화가 올리지 않는다 */
+  coreContext(): Promise<CoreContext>;
+  setCoreContext(ctx: CoreContext): Promise<void>;
+
   /* 오류 기록 (core/log.ts) — 파일명과 토큰은 적재 시점에 이미 지워져 있다 */
   logs(): Promise<LogSnapshot>;
   /** 클립보드에 넣는다. 넣은 줄 수를 돌려준다 */
@@ -137,6 +164,7 @@ export interface SbApi {
 export const IPC = {
   pickVault: 'sb:pickVault',
   currentVault: 'sb:currentVault',
+  closeVault: 'sb:closeVault',
   pickAndIngest: 'sb:pickAndIngest',
   inbox: 'sb:inbox',
   ingestInbox: 'sb:ingestInbox',
@@ -160,6 +188,10 @@ export const IPC = {
   syncNow: 'sb:syncNow',
   conflicts: 'sb:conflicts',
   resolveConflict: 'sb:resolveConflict',
+  settings: 'sb:settings',
+  setProvider: 'sb:setProvider',
+  coreContext: 'sb:coreContext',
+  setCoreContext: 'sb:setCoreContext',
   logs: 'sb:logs',
   copyLogs: 'sb:copyLogs',
   saveLogs: 'sb:saveLogs',

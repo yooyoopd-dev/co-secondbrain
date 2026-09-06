@@ -31,7 +31,7 @@ if (process.argv[2] === '--worker') {
       const res = await fetch(`${base}/v1/spaces/ACME/pages/race`, {
         method: 'PUT',
         headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', 'if-match': String(page.version) },
-        body: JSON.stringify({ path: 'wiki/entities/race.md', content: `${page.content}\n${user}-${i}` }),
+        body: JSON.stringify({ path: '02_NOTES/entities/race.md', content: `${page.content}\n${user}-${i}` }),
       });
       if (res.status === 200) {
         done++;
@@ -76,7 +76,7 @@ for (const user of ['hong@corp', 'kim@corp']) {
 await fetch(`${base}/v1/spaces/ACME/pages/race`, {
   method: 'PUT',
   headers: { authorization: `Bearer ${tokens[0]}`, 'content-type': 'application/json', 'if-none-match': '*' },
-  body: JSON.stringify({ path: 'wiki/entities/race.md', content: 'start' }),
+  body: JSON.stringify({ path: '02_NOTES/entities/race.md', content: 'start' }),
 });
 
 console.log(`허브 ${base} · 워커 2개 × ${N}회`);

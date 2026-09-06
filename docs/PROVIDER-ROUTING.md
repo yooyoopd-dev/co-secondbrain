@@ -215,7 +215,7 @@ LLM 공급자
 | # | 검사 | 주체 | 이미 계획에 있나 |
 |---|---|---|---|
 | 1 | ChangeSet JSON Schema 검증 | 앱 | §7.1 |
-| 2 | `path` 정규식 (`^wiki/(sources\|entities\|concepts\|synthesis)/[a-z0-9-]+\.md$`) | 앱 | §7.1 (M0에서 모델이 실제로 어김) |
+| 2 | `path` 정규식 (`^02_NOTES/(sources\|entities\|concepts\|synthesis)/[a-z0-9-]+\.md$`) | 앱 | §7.1 (M0에서 모델이 실제로 어김) |
 | 3 | `sanitizeTitle` — 경로 탈출·예약어 | 앱 | §9.2 (14/14 검증) |
 | 4 | 앵커 인용 존재·형식 | 앱 | §3.1 |
 | 5 | 인용된 `src-id#anchor`가 실재하는지 | 앱 | §4 Lint #8 |

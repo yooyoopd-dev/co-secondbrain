@@ -6,27 +6,54 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { safeJoin } from './security.ts';
 
+/**
+ * 금고의 폴더. **Obsidian 과 병행해서 쓰므로 사람이 여는 것에만 번호를 붙인다** —
+ * 번호가 파일 목록의 순서를 고정하고, 그 순서가 곧 작업 순서다
+ * (넣는다 → 원본 → 노트 → 내보낸다).
+ *
+ * 앱이 만들고 앱만 읽는 것은 `.sb/` 아래로 내린다. 추출 JSON 이 노트 사이에 섞여 있으면
+ * 사람이 어느 것을 열어야 하는지 알 수 없다.
+ *
+ * 첨부만 예외로 `02_NOTES/assets/` 다. **Obsidian 은 점으로 시작하는 폴더를 통째로
+ * 무시하므로** `.sb/` 에 넣으면 노트에 끼운 그림이 안 보인다.
+ */
 export const VAULT_DIRS = [
   // 사람이 파일을 놓는 대기함. Obsidian 파일 목록에서 맨 위에 오도록 번호를 붙인다.
   // **앱은 이 폴더의 파일을 옮기지도 지우지도 않는다** — 사람이 넣은 것을 앱이 치우면
   // 어디로 갔는지 찾을 수 없다. 처리 여부는 manifest 의 내용 해시로 판정한다.
   '00_INBOX',
-  'sources',
-  'extracted',
-  'wiki',
-  'wiki/sources',
-  'wiki/entities',
-  'wiki/concepts',
-  'wiki/synthesis',
-  'assets',
-  'schema',
-  'journal',
+  // 넣은 원본 파일 원형. 넣은 뒤로는 절대 고치지 않는다
+  '01_SOURCES',
+  // 위키. 관문 2 가 LLM 이 쓸 수 있는 경로를 이 네 갈래로 묶는다
+  '02_NOTES',
+  '02_NOTES/sources',
+  '02_NOTES/entities',
+  '02_NOTES/concepts',
+  '02_NOTES/synthesis',
+  '02_NOTES/assets',
+  // 내보낸 산출물. 슬라이드 저장이 여기서 시작한다
+  '03_OUTPUT',
+  // 규약과 분류. LLM 이 읽는 지시가 여기 있다
+  '09_TEMPLATES',
   '.sb',
+  '.sb/extracted',
+  '.sb/journal',
   '.sb/cache',
   '.sb/history',
   '.sb/sync',
   '.sb/sync/base',
 ] as const;
+
+/** 넣은 원본 파일이 쌓이는 곳 */
+export const SOURCES_DIR = '01_SOURCES';
+/** 위키 루트. 관문 2 의 경로 정규식이 이 이름을 강제한다 */
+export const NOTES_DIR = '02_NOTES';
+/** 앱이 뽑은 추출 JSON. 사람이 읽을 것이 아니라 `.sb/` 아래에 둔다 */
+export const EXTRACTED_DIR = '.sb/extracted';
+/** 내보낸 산출물의 기본 위치 */
+export const OUTPUT_DIR = '03_OUTPUT';
+/** 규약·분류 파일 */
+export const TEMPLATES_DIR = '09_TEMPLATES';
 
 /** 개인 금고의 공간 id. 이 금고는 허브에 붙지 않는다 (PLAN.md §3) */
 export const PERSONAL_ID = 'personal';
@@ -50,6 +77,21 @@ const CONFIG_PATH = '.sb/config.json';
 const AGENTS_MD = `# 위키 규약
 
 이 파일이 LLM 을 "규율 있는 위키 관리자"로 만든다. 사람과 LLM 이 함께 고쳐 나간다.
+
+## 폴더
+
+번호는 사람이 파일 목록에서 순서를 보라고 붙인 것이다. 작업 순서와 같다.
+
+| 폴더 | 무엇이 들어가나 |
+|---|---|
+| \`00_INBOX/\` | 사람이 처리해 달라고 놓는 파일. **앱도 LLM 도 여기를 고치지 않는다** |
+| \`01_SOURCES/\` | 넣은 원본 파일 원형. 넣은 뒤로 고치지 않는다 |
+| \`02_NOTES/\` | 위키. 페이지는 전부 여기 아래 넷 중 하나에 있다 |
+| \`03_OUTPUT/\` | 내보낸 산출물 |
+| \`09_TEMPLATES/\` | 이 파일과 분류 |
+
+**쓸 수 있는 경로는 \`02_NOTES/\` 아래뿐이다.**
+\`02_NOTES/{sources,entities,concepts,synthesis}/이름.md\` 형식이 아니면 관문 2 가 막는다.
 
 ## 페이지 형식
 
@@ -118,8 +160,8 @@ export async function createVault(root: string, config: Omit<VaultConfig, 'creat
 
   const full: VaultConfig = { ...config, createdAt: new Date().toISOString() };
   await fs.writeFile(cfgPath, JSON.stringify(full, null, 2), 'utf8');
-  await fs.writeFile(safeJoin(root, 'schema/AGENTS.md'), AGENTS_MD, 'utf8');
-  await fs.writeFile(safeJoin(root, 'schema/taxonomy.md'), TAXONOMY_MD, 'utf8');
+  await fs.writeFile(safeJoin(root, `${TEMPLATES_DIR}/AGENTS.md`), AGENTS_MD, 'utf8');
+  await fs.writeFile(safeJoin(root, `${TEMPLATES_DIR}/taxonomy.md`), TAXONOMY_MD, 'utf8');
   await fs.writeFile(safeJoin(root, 'index.md'), '# 인덱스\n\n_아직 페이지가 없습니다._\n', 'utf8');
   await fs.writeFile(safeJoin(root, 'log.md'), '# 로그\n\n', 'utf8');
   await fs.writeFile(safeJoin(root, '.sbignore'), '# .gitignore 와 같은 문법\n', 'utf8');
@@ -159,7 +201,7 @@ export async function isVault(root: string): Promise<boolean> {
 
 /** 원본을 Vault 에 복사한다. 원본 파일은 이후 절대 수정하지 않는다. */
 export async function importSource(vault: Vault, filePath: string): Promise<string> {
-  const dest = safeJoin(vault.root, 'sources', path.basename(filePath));
+  const dest = safeJoin(vault.root, SOURCES_DIR, path.basename(filePath));
   await fs.copyFile(filePath, dest);
   return dest;
 }

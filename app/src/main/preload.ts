@@ -5,6 +5,7 @@ import { IPC } from './ipc.ts';
 contextBridge.exposeInMainWorld('sb', {
   pickVault: (mode: 'open' | 'create') => ipcRenderer.invoke(IPC.pickVault, mode),
   currentVault: () => ipcRenderer.invoke(IPC.currentVault),
+  closeVault: () => ipcRenderer.invoke(IPC.closeVault),
   pickAndIngest: (classification: string) => ipcRenderer.invoke(IPC.pickAndIngest, classification),
   inbox: () => ipcRenderer.invoke(IPC.inbox),
   ingestInbox: (classification: string) => ipcRenderer.invoke(IPC.ingestInbox, classification),
@@ -28,6 +29,10 @@ contextBridge.exposeInMainWorld('sb', {
   syncNow: () => ipcRenderer.invoke(IPC.syncNow),
   conflicts: () => ipcRenderer.invoke(IPC.conflicts),
   resolveConflict: (pageId: string, merged: string) => ipcRenderer.invoke(IPC.resolveConflict, pageId, merged),
+  settings: () => ipcRenderer.invoke(IPC.settings),
+  setProvider: (id: string | null) => ipcRenderer.invoke(IPC.setProvider, id),
+  coreContext: () => ipcRenderer.invoke(IPC.coreContext),
+  setCoreContext: (ctx: unknown) => ipcRenderer.invoke(IPC.setCoreContext, ctx),
   logs: () => ipcRenderer.invoke(IPC.logs),
   copyLogs: () => ipcRenderer.invoke(IPC.copyLogs),
   saveLogs: () => ipcRenderer.invoke(IPC.saveLogs),

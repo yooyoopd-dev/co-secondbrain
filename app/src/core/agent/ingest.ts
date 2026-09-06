@@ -31,10 +31,12 @@ export const PAGE_TEMPLATE = serializePage({
  * 작업 디렉터리에 놓을 규약 파일. **배치 내내 같은 바이트여야 한다** —
  * 여기에 시각이나 문서 이름 같은 가변값을 넣으면 배치 전체의 캐시가 깨진다.
  *
- * @param agentsMd Vault 의 `schema/AGENTS.md` 정본 (PLAN.md §7.3)
+ * @param agentsMd Vault 의 `09_TEMPLATES/AGENTS.md` 정본 (PLAN.md §7.3)
+ * @param core `09_TEMPLATES/me.md` 에서 만든 블록. 안 적었으면 빈 문자열이라 접두사가 그대로다
  */
-export function conventionFile(agentsMd: string): string {
+export function conventionFile(agentsMd: string, core = ''): string {
   return `${agentsMd.trimEnd()}
+${core ? `\n${core}` : ''}
 
 ## 페이지 형식 (앱이 만든 표본 — 키 이름과 순서를 바꾸지 않는다)
 

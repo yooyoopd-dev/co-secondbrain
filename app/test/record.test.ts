@@ -26,7 +26,7 @@ const KICKOFF = CASES[0]!;
 const good = {
   summary: '에이콤 생성',
   ops: [{
-    op: 'create', path: 'wiki/entities/acme.md', baseHash: null,
+    op: 'create', path: '02_NOTES/entities/acme.md', baseHash: null,
     content: '---\nid: ent-acme\n---\n# 에이콤\n\n선정됐다.[^src-kickoff#slide-3]\n',
   }],
 };
@@ -65,7 +65,7 @@ test('check — summary 가 비거나 ops 가 없으면 잡는다', () => {
 
 test('check — overview 경로는 허용한다', () => {
   const ok = structuredClone(good);
-  ok.ops[0]!.path = 'wiki/overview.md';
+  ok.ops[0]!.path = '02_NOTES/overview.md';
   assert.equal(check(ok, KICKOFF).ok, true);
 });
 
@@ -114,10 +114,19 @@ const RECORDED: { file: string; caseId: string; extract: (s: string) => unknown 
   ...CASES.map((c) => ({ file: `gemini-${c.id}.txt`, caseId: c.id, extract: (s: string) => JSON.parse(stripFence(s)) })),
 ];
 
+/**
+ * 회수는 폴더에 번호를 붙이기 전에 했고, 그때 규약이 알려 준 접두는 `wiki/` 였다.
+ * **녹화 파일은 증거라 고치지 않는다.** 접두만 지금 이름으로 옮겨 관문에 넣는다 —
+ * 이 검사가 보는 것은 접두의 철자가 아니라 모델이 형식과 앵커를 맞췄는가다.
+ */
+function retarget(cs: ChangeSet): ChangeSet {
+  return { ...cs, ops: cs.ops.map((o) => ({ ...o, path: o.path.replace(/^wiki\//, '02_NOTES/') })) };
+}
+
 for (const r of RECORDED) {
   test(`회수 응답 ${r.file} 이 관문 7개를 통과한다`, async () => {
     const raw = await fs.readFile(new URL(`../../spikes/fixtures/cli/${r.file}`, import.meta.url), 'utf8');
-    const cs = r.extract(raw) as ChangeSet;
+    const cs = retarget(r.extract(raw) as ChangeSet);
     const c = CASES.find((x) => x.id === r.caseId)!;
     const anchors = new Map<string, ReadonlySet<string>>([
       [c.sourceId, new Set(c.chunks.map(([loc]) => loc))],

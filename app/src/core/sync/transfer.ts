@@ -25,7 +25,7 @@ export interface TransferPlan {
 
 /** `co://ACME/entities/acme-corp@v12` (PLAN.md §3) */
 export function coUri(spaceId: string, relPath: string, version: number | null): string {
-  const slug = relPath.replace(/^wiki\//, '').replace(/\.md$/, '');
+  const slug = relPath.replace(/^02_NOTES\//, '').replace(/\.md$/, '');
   return `co://${spaceId}/${slug}${version === null ? '' : `@v${version}`}`;
 }
 
@@ -170,7 +170,7 @@ export function mergeAnchors(
 async function dangling(to: Vault, body: string): Promise<string[]> {
   const out: string[] = [];
   for (const link of outboundLinks(body)) {
-    const rel = link.startsWith('wiki/') ? `${link}.md` : `wiki/${link}.md`;
+    const rel = link.startsWith('02_NOTES/') ? `${link}.md` : `02_NOTES/${link}.md`;
     try {
       await fs.access(safeJoin(to.root, rel));
     } catch {

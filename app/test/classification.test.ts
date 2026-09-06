@@ -66,7 +66,7 @@ function pageWith(cls: Classification, source: string): string {
 
 const cs = (content: string): ChangeSet => ({
   summary: '검사',
-  ops: [{ op: 'create', path: 'wiki/entities/가.md', baseHash: null, content }],
+  ops: [{ op: 'create', path: '02_NOTES/entities/가.md', baseHash: null, content }],
 });
 
 test('기밀 원본을 인용한 공개 페이지는 막힌다', () => {

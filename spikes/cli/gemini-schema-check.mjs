@@ -25,7 +25,7 @@ const SCHEMA = {
         type: 'object',
         properties: {
           op: { type: 'string', enum: ['create', 'update'] },
-          path: { type: 'string', pattern: '^wiki/(sources|entities|concepts|synthesis)/[a-z0-9-]+\\.md$' },
+          path: { type: 'string', pattern: '^02_NOTES/(sources|entities|concepts|synthesis)/[a-z0-9-]+\\.md$' },
           content: { type: 'string' },
         },
         required: ['op', 'path', 'content'],
@@ -42,7 +42,7 @@ const PROMPT = `아래 원본을 인제스트하는 ChangeSet 을 만들어라.
 ${JSON.stringify(SCHEMA, null, 1)}
 
 [규칙]
-- path 는 반드시 wiki/entities/<ascii-소문자-하이픈>.md 형식이다
+- path 는 반드시 02_NOTES/entities/<ascii-소문자-하이픈>.md 형식이다
 - 모든 주장에 [^src-kickoff#slide-12] 형식 앵커 인용을 붙인다
 - 엔티티 페이지 1개만 만든다
 
@@ -71,7 +71,7 @@ function validate(v) {
     errs.push('ops');
     return errs;
   }
-  const re = /^wiki\/(sources|entities|concepts|synthesis)\/[a-z0-9-]+\.md$/;
+  const re = /^02_NOTES\/(sources|entities|concepts|synthesis)\/[a-z0-9-]+\.md$/;
   v.ops.forEach((o, i) => {
     if (!['create', 'update'].includes(o?.op)) errs.push(`ops[${i}].op`);
     if (typeof o?.path !== 'string' || !re.test(o.path)) errs.push(`ops[${i}].path`);

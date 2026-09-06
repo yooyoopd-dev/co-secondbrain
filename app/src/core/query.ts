@@ -42,9 +42,9 @@ export interface Answer {
  * 도구로 확인하라고 못박는다. 위키를 안 읽고 아는 대로 답하면 인용이 붙지 않는다.
  * 후보 페이지를 밀어 넣지 않는다 — 에이전트가 MCP 로 당겨 간다 (PLAN.md §7.2 안 B).
  */
-export function questionPrompt(question: string): string {
+export function questionPrompt(question: string, core = ''): string {
   return `위키에서 찾아 답하라. **도구로 확인한 것만 쓴다.** 아는 대로 지어내지 않는다.
-
+${core ? `\n${core}` : ''}
 ## 질문
 
 ${question}
@@ -80,7 +80,7 @@ export function parseAnswer(data: unknown): { answer: Answer | null; reason: str
 
 /** 보관할 페이지의 경로. 질문에서 만든다. */
 export function synthesisPath(question: string): string {
-  return `wiki/synthesis/${pageSlug(question)}.md`;
+  return `02_NOTES/synthesis/${pageSlug(question)}.md`;
 }
 
 /**
@@ -91,7 +91,7 @@ export function toChangeSet(question: string, a: Answer, now: string, updatedBy 
   const claims: Claim[] = a.claims.map((c) => ({ text: c.text, source: c.source, confidence: 'EXTRACTED' }));
   const cited = a.claims.map((c) => `${c.text}[^${c.source}]`).join('\n\n');
   const links = a.pages.length
-    ? `\n\n## 참고한 페이지\n\n${a.pages.map((p) => `- [[${p.replace(/^wiki\//, '').replace(/\.md$/, '')}]]`).join('\n')}\n`
+    ? `\n\n## 참고한 페이지\n\n${a.pages.map((p) => `- [[${p.replace(/^02_NOTES\//, '').replace(/\.md$/, '')}]]`).join('\n')}\n`
     : '\n';
   const path = synthesisPath(question);
 

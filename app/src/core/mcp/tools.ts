@@ -12,8 +12,8 @@ import type { ToolDef } from './server.ts';
 
 const MAX_HITS = 20;
 
-/** 노출 경로는 `wiki/` 아래 마크다운뿐이다. 이걸 안 막으면 금고 전체가 새 나간다. */
-const READABLE = /^wiki\/[a-z0-9가-힣/-]+\.md$/;
+/** 노출 경로는 `02_NOTES/` 아래 마크다운뿐이다. 이걸 안 막으면 금고 전체가 새 나간다. */
+const READABLE = /^02_NOTES\/[a-z0-9가-힣/-]+\.md$/;
 
 function line(e: WikiEntry): string {
   return `${e.path} — ${e.page.front.title}${e.page.front.summary ? ` · ${e.page.front.summary}` : ''}`;
@@ -101,10 +101,10 @@ export function wikiTools(vault: Vault): ToolDef[] {
     },
     {
       name: 'get_page',
-      description: '페이지 전문을 그대로 돌려준다. 경로는 wiki/entities/에이콤.md 형태다.',
+      description: '페이지 전문을 그대로 돌려준다. 경로는 02_NOTES/entities/에이콤.md 형태다.',
       inputSchema: {
         type: 'object',
-        properties: { path: { type: 'string', description: 'wiki/ 로 시작하는 페이지 경로' } },
+        properties: { path: { type: 'string', description: '02_NOTES/ 로 시작하는 페이지 경로' } },
         required: ['path'],
         additionalProperties: false,
       },

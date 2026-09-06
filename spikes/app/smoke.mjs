@@ -72,6 +72,20 @@ ok('노출된 것 말고는 없다', await win.evaluate(() => typeof window.requ
 ok('IPC currentVault', (await win.evaluate(() => window.sb.currentVault())) === null);
 ok('IPC search', JSON.stringify(await win.evaluate(() => window.sb.search('없는말'))) === '[]');
 
+// 설정 — 금고를 안 열어도 열려야 한다. 못 여는 것 자체가 설정 문제일 때가 있다.
+const st = await win.evaluate(() => window.sb.settings());
+ok('금고 없이도 설정이 열린다', st.vaultRoot === null && /^\d+\.\d+\.\d+/.test(st.version), st);
+ok('설정이 공급자 셋을 준다', st.providers.length === 3 && st.providers.every((p) => typeof p.installed === 'boolean'), st.providers);
+
+// 공급자 고정이 왕복하는가. 끝나고 자동으로 되돌린다.
+const fixed = await win.evaluate(async () => {
+  await window.sb.setProvider('gemini');
+  const a = (await window.sb.settings()).provider;
+  await window.sb.setProvider(null);
+  return { a, b: (await window.sb.settings()).provider };
+});
+ok('공급자 고정이 왕복한다', fixed.a === 'gemini' && fixed.b === null, fixed);
+
 // 허브 토큰은 OS 자격 증명 저장소에 넣는다. **여기서 재는 것은 어떤 백엔드가 잡히는가**이고
 // 리눅스 컨테이너에는 키링이 없어 값 자체는 사내·Windows 와 다르다.
 // Windows 에서는 available=true 여야 한다 (DPAPI). 아니면 앱이 연결을 거절한다.

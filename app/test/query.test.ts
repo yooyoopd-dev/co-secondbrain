@@ -12,7 +12,7 @@ const A: Answer = {
     { text: '에이콤의 계약 갱신일은 2027-03-14 이다.', source: 'src-kickoff#slide-7' },
     { text: '베타테크의 보증 한도는 4억 2천만원이다.', source: 'src-contract#page-2' },
   ],
-  pages: ['wiki/entities/acme.md', 'wiki/entities/beta.md'],
+  pages: ['02_NOTES/entities/acme.md', '02_NOTES/entities/beta.md'],
 };
 const ANCHORS = new Map<string, ReadonlySet<string>>([
   ['src-kickoff', new Set(['slide-7'])],
@@ -30,7 +30,7 @@ test('프롬프트가 도구로 확인하라고 못박는다', () => {
 });
 
 test('후보 페이지를 프롬프트에 밀어 넣지 않는다 — 에이전트가 당겨 간다', () => {
-  assert.equal(questionPrompt(Q).includes('wiki/entities/'), false);
+  assert.equal(questionPrompt(Q).includes('02_NOTES/entities/'), false);
 });
 
 /* ---------------- 응답 검사 ---------------- */
@@ -54,7 +54,7 @@ test('답변이 비었거나 근거가 없으면 막는다', () => {
 });
 
 test('앵커 형식이 아니면 막는다 — 보관 단계에서 어차피 거부된다', () => {
-  for (const bad of ['wiki/entities/acme.md', 'src-kickoff', '', 'slide-7']) {
+  for (const bad of ['02_NOTES/entities/acme.md', 'src-kickoff', '', 'slide-7']) {
     const r = parseAnswer({ answer: 'x', claims: [{ text: 't', source: bad }] });
     assert.match(r.reason ?? '', /앵커 형식/, bad);
   }
@@ -70,7 +70,7 @@ test('스키마가 answer 와 claims 를 필수로 잡는다', () => {
 
 test('보관 경로가 관문 2 를 통과한다', () => {
   const p = synthesisPath(Q);
-  assert.ok(p.startsWith('wiki/synthesis/'));
+  assert.ok(p.startsWith('02_NOTES/synthesis/'));
   assert.ok(PAGE_PATH_RE.test(p), p);
   assert.ok(PAGE_PATH_RE.test(synthesisPath('계약 갱신일 · 보증 한도?')), synthesisPath('계약 갱신일 · 보증 한도?'));
   assert.ok(PAGE_PATH_RE.test(synthesisPath('***')));

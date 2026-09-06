@@ -8,7 +8,7 @@
 import fs from 'node:fs/promises';
 import { safeJoin, slugify } from './security.ts';
 import { citations, pageHash, parsePage, PageParseError, SUMMARY_MAX, serializePage } from './page.ts';
-import type { Vault } from './vault.ts';
+import { EXTRACTED_DIR, type Vault } from './vault.ts';
 import { CLASSIFICATION_LABEL, classificationRank, DEFAULT_CLASSIFICATION } from './types.ts';
 import type { Classification } from './types.ts';
 
@@ -16,7 +16,7 @@ export type Op = 'create' | 'update' | 'delete';
 
 export interface ChangeOp {
   op: Op;
-  /** `wiki/entities/acme-corp.md` — 아래 정규식을 지켜야 한다 */
+  /** `02_NOTES/entities/acme-corp.md` — 아래 정규식을 지켜야 한다 */
   path: string;
   /** update·delete 는 필수. create 는 null. 낙관적 동시성의 기준 */
   baseHash: string | null;
@@ -33,8 +33,8 @@ export interface ChangeSet {
 
 /** M0 §1.4 — 모델이 지시를 무시하고 `entities/에이콤(주).md` 를 냈다.
  *  프롬프트만으로는 부족해서 스키마와 여기서 이중으로 막는다. */
-export const PAGE_PATH_RE = /^wiki\/(sources|entities|concepts|synthesis)\/[a-z0-9가-힣-]+\.md$/;
-export const OVERVIEW_PATH = 'wiki/overview.md';
+export const PAGE_PATH_RE = /^02_NOTES\/(sources|entities|concepts|synthesis)\/[a-z0-9가-힣-]+\.md$/;
+export const OVERVIEW_PATH = '02_NOTES/overview.md';
 
 export interface Violation {
   /** 몇 번 관문인가 */
@@ -175,14 +175,14 @@ export async function sourceClassification(vault: Vault): Promise<Map<string, Cl
   const m = new Map<string, Classification>();
   let names: string[];
   try {
-    names = await fs.readdir(safeJoin(vault.root, 'extracted'));
+    names = await fs.readdir(safeJoin(vault.root, EXTRACTED_DIR));
   } catch {
     return m;
   }
   for (const name of names) {
     if (!name.endsWith('.json') || name.startsWith('__')) continue;
     try {
-      const raw: unknown = JSON.parse(await fs.readFile(safeJoin(vault.root, 'extracted', name), 'utf8'));
+      const raw: unknown = JSON.parse(await fs.readFile(safeJoin(vault.root, EXTRACTED_DIR, name), 'utf8'));
       const e = raw as { sourceId?: string; classification?: Classification };
       // 예전에 넣은 원본에는 등급이 없다. 기본값으로 본다.
       if (e.sourceId) m.set(e.sourceId, e.classification ?? DEFAULT_CLASSIFICATION);

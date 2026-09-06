@@ -6,7 +6,7 @@ import {
 import type { WikiEntry } from '../src/core/wiki.ts';
 
 const entry = (slug: string, title: string): WikiEntry => ({
-  path: `wiki/entities/${slug}.md`,
+  path: `02_NOTES/entities/${slug}.md`,
   page: {
     front: {
       id: `ent-${slug}`, type: 'entity', title, summary: '요약.', aliases: [], tags: [], claims: [],
@@ -29,7 +29,7 @@ test('네 가지만 본다 — 계산 검사는 여기 없다', () => {
 
 test('페이지 목록만 준다. 본문은 에이전트가 당겨 간다', () => {
   const p = judgmentPrompt(ENTRIES);
-  assert.ok(p.includes('wiki/entities/acme.md — 에이콤'));
+  assert.ok(p.includes('02_NOTES/entities/acme.md — 에이콤'));
   assert.equal(p.includes('아주 긴 본문'), false, '본문이 프롬프트에 실렸습니다');
   assert.ok(p.includes('get_page'));
 });
@@ -48,7 +48,7 @@ test('스키마가 네 검사만 허용한다', () => {
 /* ---------------- 응답 검사 ---------------- */
 
 const finding = (over: Record<string, unknown> = {}) => ({
-  check: 1, pages: ['wiki/entities/acme.md'], message: '두 페이지가 다르게 말한다.', fix: '원본을 다시 보라.', ...over,
+  check: 1, pages: ['02_NOTES/entities/acme.md'], message: '두 페이지가 다르게 말한다.', fix: '원본을 다시 보라.', ...over,
 });
 
 test('제대로 된 지적을 통과시킨다', () => {
@@ -59,14 +59,14 @@ test('제대로 된 지적을 통과시킨다', () => {
 });
 
 test('없는 페이지를 가리키면 버린다 — 모델이 경로를 지어낸다', () => {
-  const r = parseJudgment({ findings: [finding({ pages: ['wiki/entities/없음.md'] })] }, KNOWN);
+  const r = parseJudgment({ findings: [finding({ pages: ['02_NOTES/entities/없음.md'] })] }, KNOWN);
   assert.deepEqual(r.findings, []);
   assert.equal(r.dropped, 1);
 });
 
 test('실재하는 경로만 남기고 지적은 살린다', () => {
-  const r = parseJudgment({ findings: [finding({ pages: ['wiki/entities/acme.md', 'wiki/entities/없음.md'] })] }, KNOWN);
-  assert.deepEqual(r.findings[0]!.pages, ['wiki/entities/acme.md']);
+  const r = parseJudgment({ findings: [finding({ pages: ['02_NOTES/entities/acme.md', '02_NOTES/entities/없음.md'] })] }, KNOWN);
+  assert.deepEqual(r.findings[0]!.pages, ['02_NOTES/entities/acme.md']);
   assert.equal(r.dropped, 0);
 });
 
@@ -115,7 +115,7 @@ test('밀어 넣기 — 본문이 프롬프트에 들어간다', () => {
   const r = judgmentPromptPush(ENTRIES);
   assert.ok('prompt' in r);
   assert.ok(r.prompt.includes('아주 긴 본문'), 'MCP 가 없으니 본문을 직접 넣어야 한다');
-  assert.ok(r.prompt.includes('wiki/entities/acme.md'));
+  assert.ok(r.prompt.includes('02_NOTES/entities/acme.md'));
 });
 
 test('밀어 넣기 — 검사 항목과 규칙은 당겨 가기와 같은 문장이다', () => {

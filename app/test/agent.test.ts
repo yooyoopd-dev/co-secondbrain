@@ -139,8 +139,8 @@ test('detect 는 버전을 읽고, 실패하면 found=false 다', async () => {
 
 test('스키마의 path 패턴은 관문 2 와 같은 것을 받고 같은 것을 막는다', () => {
   const re = new RegExp(CHANGESET_SCHEMA.properties.ops.items.properties.path.pattern);
-  const ok = ['wiki/entities/acme-corp.md', 'wiki/concepts/계약-갱신.md', 'wiki/synthesis/a.md', OVERVIEW_PATH];
-  const bad = ['entities/acme.md', 'wiki/entities/에이콤(주).md', '../../etc/passwd', 'wiki/other/a.md', 'wiki/entities/a.txt'];
+  const ok = ['02_NOTES/entities/acme-corp.md', '02_NOTES/concepts/계약-갱신.md', '02_NOTES/synthesis/a.md', OVERVIEW_PATH];
+  const bad = ['entities/acme.md', '02_NOTES/entities/에이콤(주).md', '../../etc/passwd', '02_NOTES/other/a.md', '02_NOTES/entities/a.txt'];
   for (const p of ok) {
     assert.ok(re.test(p), `스키마가 막았다: ${p}`);
     assert.ok(p === OVERVIEW_PATH || PAGE_PATH_RE.test(p), `관문 2 가 막았다: ${p}`);
@@ -359,23 +359,23 @@ const PAGE = serializePage({
 const NOW = '2026-09-06T12:34:56.000Z';
 
 test('스탬프 — 모델이 뭘 썼든 실제 공급자가 기록된다', () => {
-  const out = stampProvider({ summary: 's', ops: [{ op: 'create', path: 'wiki/entities/a.md', baseHash: null, content: PAGE }] }, 'gemini', NOW);
+  const out = stampProvider({ summary: 's', ops: [{ op: 'create', path: '02_NOTES/entities/a.md', baseHash: null, content: PAGE }] }, 'gemini', NOW);
   assert.equal(parsePage(out.ops[0]!.content!).front.generatedBy, 'gemini');
 });
 
 test('스탬프 — updated 를 지금으로 바꾼다. 안 그러면 낡은 주장 검사가 못 돈다', () => {
-  const out = stampProvider({ summary: 's', ops: [{ op: 'create', path: 'wiki/entities/a.md', baseHash: null, content: PAGE }] }, 'claude-code', NOW);
+  const out = stampProvider({ summary: 's', ops: [{ op: 'create', path: '02_NOTES/entities/a.md', baseHash: null, content: PAGE }] }, 'claude-code', NOW);
   assert.equal(parsePage(out.ops[0]!.content!).front.updated, NOW);
   assert.notEqual(parsePage(PAGE).front.updated, NOW); // 원본은 가짜 날짜였다
 });
 
 test('스탬프 — updated_by 는 건드리지 않는다. 앱이 사용자를 모른다', () => {
-  const out = stampProvider({ summary: 's', ops: [{ op: 'create', path: 'wiki/entities/a.md', baseHash: null, content: PAGE }] }, 'gemini', NOW);
+  const out = stampProvider({ summary: 's', ops: [{ op: 'create', path: '02_NOTES/entities/a.md', baseHash: null, content: PAGE }] }, 'gemini', NOW);
   assert.equal(parsePage(out.ops[0]!.content!).front.updatedBy, 'app');
 });
 
 test('스탬프 — 그 외에는 바이트가 안 바뀐다', () => {
-  const out = stampProvider({ summary: 's', ops: [{ op: 'create', path: 'wiki/entities/a.md', baseHash: null, content: PAGE }] }, 'claude-code', NOW);
+  const out = stampProvider({ summary: 's', ops: [{ op: 'create', path: '02_NOTES/entities/a.md', baseHash: null, content: PAGE }] }, 'claude-code', NOW);
   const before = parsePage(PAGE);
   const after = parsePage(out.ops[0]!.content!);
   assert.equal(after.body, before.body);
@@ -387,8 +387,8 @@ test('스탬프 — delete 와 파싱 불가 content 는 그대로 둔다', () =
   const cs: ChangeSet = {
     summary: 's', discussion: '물음',
     ops: [
-      { op: 'delete', path: 'wiki/entities/a.md', baseHash: 'h' },
-      { op: 'create', path: 'wiki/entities/b.md', baseHash: null, content: '앞머리가 없다' },
+      { op: 'delete', path: '02_NOTES/entities/a.md', baseHash: 'h' },
+      { op: 'create', path: '02_NOTES/entities/b.md', baseHash: null, content: '앞머리가 없다' },
     ],
   };
   const out = stampProvider(cs, 'gemini', NOW);
@@ -409,7 +409,7 @@ test('스탬프 — 녹화된 Gemini 응답의 claude-code 표기가 고쳐진�
 
 import { createGemini, extract, retryPrompt, validateChangeSet, withSchema, stripFence as gStripFence } from '../src/core/agent/gemini.ts';
 
-const OK_CS = JSON.stringify({ summary: 's', ops: [{ op: 'create', path: 'wiki/entities/a.md', baseHash: null, content: PAGE }] });
+const OK_CS = JSON.stringify({ summary: 's', ops: [{ op: 'create', path: '02_NOTES/entities/a.md', baseHash: null, content: PAGE }] });
 
 test('B등급 — 펜스가 있어도 없어도 뽑는다', () => {
   assert.equal(gStripFence(OK_CS), OK_CS);
@@ -420,7 +420,8 @@ test('B등급 — 펜스가 있어도 없어도 뽑는다', () => {
 test('B등급 — 녹화된 실응답 3건이 전부 extract 를 통과한다', async () => {
   for (const id of ['kickoff', 'contract', 'cost']) {
     const raw = await fs.readFile(new URL(`../../spikes/fixtures/cli/gemini-${id}.txt`, import.meta.url), 'utf8');
-    assert.equal(extract(raw, validateChangeSet).reason, null, id);
+    // 녹화 당시 규약의 접두는 `wiki/` 였다. 증거 파일은 그대로 두고 접두만 옮겨 넣는다.
+    assert.equal(extract(raw.replaceAll('wiki/', '02_NOTES/'), validateChangeSet).reason, null, id);
   }
 });
 

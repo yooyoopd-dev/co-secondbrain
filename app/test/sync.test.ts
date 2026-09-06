@@ -161,7 +161,7 @@ const put = async (v: Vault, rel: string, text: string): Promise<void> => {
 
 const read = (v: Vault, rel: string) => fs.readFile(path.join(v.root, rel), 'utf8');
 
-const REL = 'wiki/entities/acme-corp.md';
+const REL = '02_NOTES/entities/acme-corp.md';
 
 /* ---------------- 스캔과 보류 변경 ---------------- */
 
@@ -384,7 +384,7 @@ test('허브에 못 물어보면 낡음 판정을 유보한다', async () => {
 });
 
 test('co:// URI 는 왕복한다', () => {
-  assert.equal(coUri('ACME', 'wiki/entities/acme-corp.md', 12), 'co://ACME/entities/acme-corp@v12');
+  assert.equal(coUri('ACME', '02_NOTES/entities/acme-corp.md', 12), 'co://ACME/entities/acme-corp@v12');
   assert.deepEqual(parseCoUri('co://ACME/entities/acme-corp@v12'), { spaceId: 'ACME', slug: 'entities/acme-corp', version: 12 });
   assert.deepEqual(parseCoUri('co://ACME/entities/acme-corp'), { spaceId: 'ACME', slug: 'entities/acme-corp', version: null });
   assert.equal(parseCoUri('https://example.com'), null);

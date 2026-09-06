@@ -2,7 +2,9 @@
 // 좌: 원본 목록 / 중: 검색 결과 / 우: 원문 뷰어 (앵커로 점프)
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Extraction, SearchHit } from '../core/types.ts';
-import type { SbApi, HubStatus, InboxItem, IngestResult, SourceSummary } from '../main/ipc.ts';
+import type { SbApi, AppSettings, HubStatus, InboxItem, IngestResult, SourceSummary } from '../main/ipc.ts';
+import type { ProviderId } from '../core/agent/types.ts';
+import { EMPTY_CORE_CONTEXT, type CoreContext } from '../core/context.ts';
 import { CLASSIFICATIONS, CLASSIFICATION_LABEL, DEFAULT_CLASSIFICATION } from '../core/types.ts';
 import type { Classification } from '../core/types.ts';
 import type { LogEntry } from '../core/log.ts';
@@ -19,6 +21,7 @@ import { summarize } from '../core/spend.ts';
 import ReviewOverlay from './Review.tsx';
 import SyncPanel from './Sync.tsx';
 import DebugPanel from './Debug.tsx';
+import { CoreContextPanel, SettingsPanel } from './Settings.tsx';
 import { Icon } from './icons.tsx';
 
 declare global {
@@ -60,6 +63,10 @@ export default function App() {
   // 넣을 때 고르는 열람 등급. 기본은 사내다 — 공개를 기본으로 두면 실수가 유출이 된다
   const [classification, setClassification] = useState<Classification>(DEFAULT_CLASSIFICATION);
   const [inbox, setInbox] = useState<InboxItem[]>([]);
+  // 설정과 내 맥락. 정본은 main(과 금고의 파일)이고 화면은 사본을 그린다
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [core, setCore] = useState<CoreContext>(EMPTY_CORE_CONTEXT);
+  const [coreOpen, setCoreOpen] = useState(false);
 
   useEffect(() => {
     void window.sb.currentVault().then(setVault);
@@ -311,6 +318,51 @@ export default function App() {
     if (ext) setViewer({ ext, locator });
   };
 
+  /* 설정 · 내 맥락 */
+
+  const openSettings = async () => setSettings(await window.sb.settings());
+
+  const pickProvider = async (id: ProviderId | null) => {
+    await window.sb.setProvider(id);
+    setSettings(await window.sb.settings());
+  };
+
+  /**
+   * 금고를 닫고 첫 화면으로 돌아간다. **검토 대기가 있으면 먼저 묻는다** —
+   * 승인 전 변경안은 main 의 메모리에만 있어서 닫는 순간 사라진다.
+   */
+  const closeVault = async () => {
+    if (review && !window.confirm('검토 중인 변경안이 사라집니다. 그래도 닫습니까?')) return;
+    await window.sb.closeVault();
+    setSettings(null);
+    setVault(null);
+    setSources([]);
+    setHits([]);
+    setQuery('');
+    setViewer(null);
+    setReview(null);
+    setReviewNote(null);
+    setAnswer(null);
+    setInbox([]);
+    setCore(EMPTY_CORE_CONTEXT);
+  };
+
+  const openCore = async () => {
+    setCore(await window.sb.coreContext());
+    setCoreOpen(true);
+  };
+
+  const saveCore = async (ctx: CoreContext) => {
+    setBusy(true);
+    try {
+      await window.sb.setCoreContext(ctx);
+      setCore(await window.sb.coreContext());
+      setReviewNote('내 맥락을 저장했습니다');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   /* 오류 기록 — 복사·저장은 main 이 한다. 렌더러는 클립보드에 직접 닿지 않는다 */
 
   const debug = {
@@ -364,7 +416,8 @@ export default function App() {
         inbox={inbox}
         classification={classification}
         onClassification={setClassification}
-        onOpen={() => openVault('open')}
+        onSettings={() => void openSettings()}
+        onCore={() => void openCore()}
         onSelect={(id) => jump(id, null)}
         spend={spend}
         pending={pending}
@@ -415,6 +468,22 @@ export default function App() {
           onJump={(sourceId, locator) => void jump(sourceId, locator)}
           onEdit={(path, content) => void editOp(path, content)}
         />
+      )}
+      {settings && (
+        <SettingsPanel
+          settings={settings}
+          busy={busy}
+          onProvider={(id) => void pickProvider(id)}
+          onOpenVault={() => {
+            setSettings(null);
+            void openVault('open');
+          }}
+          onCloseVault={() => void closeVault()}
+          onClose={() => setSettings(null)}
+        />
+      )}
+      {coreOpen && (
+        <CoreContextPanel value={core} busy={busy} onSave={(c) => void saveCore(c)} onClose={() => setCoreOpen(false)} />
       )}
       {debugOverlay}
     </div>
@@ -488,7 +557,8 @@ function Rail({
   inbox,
   classification,
   onClassification,
-  onOpen,
+  onSettings,
+  onCore,
   onSelect,
   spend,
   pending,
@@ -507,7 +577,8 @@ function Rail({
   inbox: InboxItem[];
   classification: Classification;
   onClassification: (c: Classification) => void;
-  onOpen: () => void;
+  onSettings: () => void;
+  onCore: () => void;
   onSelect: (id: string) => void;
   spend: Status[];
   pending: number | null;
@@ -552,8 +623,9 @@ function Rail({
           <button className="primary" style={{ flex: 1 }} disabled={busy} onClick={onIngest}>
             <Icon name="plus" /> 문서 추가
           </button>
-          <button disabled={busy} onClick={onOpen} title="다른 Vault 열기">
-            …
+          {/* 금고 경로·CLI·금고 닫기가 전부 여기 있다 */}
+          <button aria-label="설정" disabled={busy} onClick={onSettings} title="설정">
+            <Icon name="gear" />
           </button>
         </div>
         <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
@@ -562,6 +634,11 @@ function Rail({
           </button>
           <button style={{ flex: 1 }} disabled={busy} onClick={onExport} title="Marp 슬라이드로 내보내기">
             슬라이드
+          </button>
+        </div>
+        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+          <button style={{ flex: 1 }} disabled={busy} onClick={onCore} title="LLM 이 매 호출에서 먼저 읽는 세 문항">
+            <Icon name="user" /> 내 맥락
           </button>
         </div>
         {hub && !hub.personal && (

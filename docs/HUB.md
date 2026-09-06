@@ -98,7 +98,7 @@ CREATE TABLE tokens (
 CREATE TABLE pages (
   space_id TEXT NOT NULL,
   page_id  TEXT NOT NULL,         -- 'ent-acme-corp'
-  path     TEXT NOT NULL,         -- 'wiki/entities/acme-corp.md'
+  path     TEXT NOT NULL,         -- '02_NOTES/entities/acme-corp.md'
   version  INTEGER NOT NULL,
   hash     TEXT NOT NULL,         -- sha256(content)
   content  TEXT NOT NULL,         -- front-matter 포함 전문
@@ -209,7 +209,7 @@ GET  /v1/health
 **조용한 덮어쓰기는 어느 방향으로도 일어나지 않습니다.** 병합안에 충돌 표시가 남아 있으면
 6단계가 거절합니다. `<<<<<<<` 가 그대로 올라간 페이지는 다음 사람이 읽을 때 더 큰 비용입니다.
 
-동기화 대상은 `wiki/{sources,entities,concepts,synthesis}/*.md` 입니다. index.md 와 log.md 는
+동기화 대상은 `02_NOTES/{sources,entities,concepts,synthesis}/*.md` 입니다. index.md 와 log.md 는
 각 클라이언트가 다시 만듭니다. blob은 이 흐름에 없습니다. 인용을 클릭하거나 "오프라인 고정"을
 켤 때 개별로 받습니다.
 

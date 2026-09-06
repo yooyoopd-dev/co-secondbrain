@@ -5,7 +5,7 @@ import type { WikiEntry } from '../src/core/wiki.ts';
 import type { Claim } from '../src/core/page.ts';
 
 const entry = (title: string, summary: string, claims: Claim[] = [], openQuestions: string[] = []): WikiEntry => ({
-  path: `wiki/entities/${title}.md`,
+  path: `02_NOTES/entities/${title}.md`,
   page: {
     front: {
       id: `ent-${title}`, type: 'entity', title, summary, aliases: [], tags: [],

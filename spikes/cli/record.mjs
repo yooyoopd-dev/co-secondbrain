@@ -39,7 +39,7 @@ export const SCHEMA = {
         type: 'object',
         properties: {
           op: { type: 'string', enum: ['create', 'update', 'delete'] },
-          path: { type: 'string', pattern: '(?:^wiki/overview\\.md$)|(?:^wiki\\/(sources|entities|concepts|synthesis)\\/[a-z0-9가-힣-]+\\.md$)' },
+          path: { type: 'string', pattern: '(?:^02_NOTES/overview\\.md$)|(?:^02_NOTES\\/(sources|entities|concepts|synthesis)\\/[a-z0-9가-힣-]+\\.md$)' },
           baseHash: { type: ['string', 'null'], description: 'update·delete 는 지금 페이지의 해시, create 는 null' },
           content: { type: 'string', description: 'YAML front-matter 로 시작하는 페이지 전문. delete 는 생략한다' },
         },
@@ -119,7 +119,7 @@ ${anchors.join(' · ')}
  * 검사 — 정답을 알고 판정한다
  * ------------------------------------------------------------------ */
 
-const PATH_RE = /^wiki\/(overview\.md|(sources|entities|concepts|synthesis)\/[a-z0-9가-힣-]+\.md)$/;
+const PATH_RE = /^02_NOTES\/(overview\.md|(sources|entities|concepts|synthesis)\/[a-z0-9가-힣-]+\.md)$/;
 const CITE_RE = /\[\^([a-z0-9가-힣-]+)#([^\]]+)\](?!:)/gi;
 
 export function stripFence(s) {

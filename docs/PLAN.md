@@ -76,44 +76,55 @@ CO 영역에 원본을 **직접 인제스트**하는 것도 가능합니다(업�
 ```
 <Space>/
 ├─ 00_INBOX/                    # ★ 사람이 파일을 놓는 대기함. 앱이 옮기지도 지우지도 않음
-├─ sources/                     # 원본. 앱이 절대 수정하지 않음
-├─ extracted/                   # 결정론적 추출. LLM 미개입. 언제든 재생성
-│   ├─ <name>.md                #   본문 텍스트
-│   ├─ <name>.anchors.json      #   페이지/슬라이드/셀/타임코드 좌표
-│   └─ <name>.structure.json    #   ★ 구조 관계 (§6.2)
+├─ 01_SOURCES/                  # 원본. 앱이 절대 수정하지 않음
 │
-├─ wiki/                        # ★ LLM 소유. Obsidian 호환 마크다운
+├─ 02_NOTES/                    # ★ LLM 소유. Obsidian 호환 마크다운
 │   ├─ overview.md
 │   ├─ sources/  entities/  concepts/  synthesis/
+│   └─ assets/                  # 이미지 (Obsidian 첨부 폴더 규약)
 │
-├─ assets/                      # 이미지 (Obsidian 첨부 폴더 규약)
-├─ schema/
+├─ 03_OUTPUT/                   # 내보낸 산출물. 슬라이드 저장이 여기서 시작
+├─ 09_TEMPLATES/
 │   ├─ AGENTS.md                # ★ 정본 스키마
-│   └─ taxonomy.md
+│   ├─ taxonomy.md
+│   └─ me.md                    # ★ 나의 기준 맥락 (§3.3). 동기화가 올리지 않음
 ├─ index.md                     # 카탈로그 (§5)
 ├─ log.md                       # 시간순 추가 전용 (§5)
 ├─ .sbignore                    # 무시 규칙 (§9.3)
 │
 └─ .sb/                         # 앱 내부. 위키가 아님
     ├─ config.json
+    ├─ extracted/               # 결정론적 추출. LLM 미개입. 언제든 재생성
+    │   ├─ <name>.md            #   본문 텍스트
+    │   ├─ <name>.anchors.json  #   페이지/슬라이드/셀/타임코드 좌표
+    │   └─ <name>.structure.json #  ★ 구조 관계 (§6.2)
     ├─ catalog.sqlite           # 검색 색인 3종 + 링크 그래프 캐시. 재생성 가능
     │                           #   fp=unicode61(접두) ft=trigram docs=원문(LIKE 폴백)
     ├─ cache/                   # ★ 시맨틱 캐시 (§9.1)
     ├─ manifest.json            # ★ 성공 완료 시에만 기록 (§9.1)
     ├─ history/                 # 스냅샷
+    ├─ journal/
     └─ sync/                    # CO 영역만
 ```
 
+**번호는 사람이 여는 것에만 붙입니다.** Obsidian을 병행해서 쓰므로 파일 목록의 순서가
+곧 작업 순서여야 합니다(넣는다 → 원본 → 노트 → 내보낸다). 앱이 만들고 앱만 읽는
+`extracted/`와 `journal/`은 `.sb/` 아래로 내렸습니다 — 추출 JSON이 노트 사이에 섞여 있으면
+사람이 어느 것을 열어야 하는지 알 수 없습니다.
+
+첨부만 예외로 `02_NOTES/assets/`입니다. **Obsidian은 점으로 시작하는 폴더를 통째로
+무시하므로** `.sb/`에 넣으면 노트에 끼운 그림이 안 보입니다.
+
 `00_INBOX/`가 따로 있는 이유: **아직 처리되지 않은 것이 디스크에 드러나야** 합니다.
 화면의 "제안 대기 N건"은 앱을 끄면 사라지는 상태이고, 이 프로젝트의 원칙은 디스크가
-진실이라는 것입니다. 번호 접두는 Obsidian 파일 목록에서 맨 위에 오게 합니다.
+진실이라는 것입니다.
 
 앱은 이 폴더를 **읽기만 합니다.** 처리한 파일도 그대로 둡니다 — 사람이 넣은 것을 앱이
 치우면 어디로 갔는지 찾을 수 없습니다. 이미 넣은 것인지는 내용 해시로 판정하므로
 이름을 바꿔도 같은 것으로 봅니다.
 
-`wiki/` 아래 이름에는 번호를 붙이지 않습니다. 관문 2가 경로 정규식으로 LLM이 쓸 수 있는
-자리를 막고 있고(§9.2), 허브에 이미 올라간 경로가 그 이름을 씁니다.
+`02_NOTES/` **안쪽 네 갈래에는 번호를 붙이지 않습니다.** 이 이름이 페이지 id와 wikilink에
+그대로 들어가고, 관문 2가 경로 정규식으로 LLM이 쓸 수 있는 자리를 여기로 묶고 있습니다(§9.2).
 
 ### 설계 원칙 6가지
 
@@ -206,6 +217,30 @@ updated_by: hong@corp
 0~100이라는 눈금 자체도 M0에서 기각됐습니다 — 범위로 매기라고 하면 뭉개진 값이 나오고
 고르라고 하면 일관됩니다(§3.1의 5단계).
 
+### 3.3 나의 기준 맥락 (`09_TEMPLATES/me.md`)
+
+세 문항을 사람이 적고, 적은 것이 LLM 호출의 앞머리에 그대로 들어갑니다.
+
+| 문항 | 파일의 절 |
+|---|---|
+| Who am I? | `## 나는 누구인가` |
+| Why record this? | `## 왜 기록하는가` |
+| What output do you want? | `## 어떤 산출물을 원하는가` |
+
+같은 원본이라도 누가 왜 쌓는지 알면 LLM이 고르는 것이 달라집니다. 구매팀 대리에게
+계약 갱신일은 주장이고, 개발자에게는 배경입니다.
+
+**앱 설정이 아니라 금고 안 마크다운 파일 하나가 정본입니다.** 두 가지 이유입니다.
+Obsidian으로 열어 그대로 고칠 수 있어야 하고, 이 내용이 프롬프트 접두사에 들어가기
+때문입니다 — 접두사는 배치 내내 같은 바이트여야 캐시가 삽니다(M2-PLAN.md §2.1).
+파일이 안 바뀌면 바이트도 안 바뀝니다.
+
+자리가 `09_TEMPLATES/`인 이유: 동기화가 올리는 것은 `02_NOTES/` 아래 페이지뿐이므로
+(§8) **CO 영역에서도 이 파일은 동료에게 가지 않습니다.**
+
+안 적었으면 프롬프트에 한 글자도 안 붙습니다. "안 적었습니다" 세 줄을 매 호출 보내면
+토큰만 쓰고 모델을 헷갈리게 합니다.
+
 ---
 
 ## 4. 세 가지 동작
@@ -235,7 +270,7 @@ updated_by: hong@corp
 - **감독 모드** (기본) — 한 건씩. 요약을 읽고 강조점을 지시하고 페이지별 승인
 - **일괄 모드** — 여러 건을 한 번에. 검토는 마지막에 묶어서. 백로그 정리용
 
-어느 쪽을 쓸지는 `schema/AGENTS.md`에 기록합니다.
+어느 쪽을 쓸지는 `09_TEMPLATES/AGENTS.md`에 기록합니다.
 
 ### Query
 
@@ -367,7 +402,7 @@ CO 영역에서는 허브 DB의 events가 정본이고, log.md는 동기화 시 
 ### 6.3 이미지
 
 원문의 지적을 반영합니다: LLM은 인라인 이미지가 든 마크다운을 한 번에 읽지 못합니다.
-추출기는 이미지를 `assets/`에 떼어내고 본문에는 참조만 남깁니다.
+추출기는 이미지를 `02_NOTES/assets/`에 떼어내고 본문에는 참조만 남깁니다.
 LLM은 텍스트를 먼저 읽고, 필요한 이미지만 **별도 턴에서** 봅니다.
 
 ### 6.4 알려진 한계 (v1에 남김)
@@ -393,8 +428,8 @@ interface AgentCli {
 ### 7.1 쓰기 경로 (ChangeSet 생성) — 확정
 
 1. 임시 **격리 작업 디렉터리**를 만든다
-2. 이번 작업에 필요한 것만 복사한다 — `schema/AGENTS.md`, `index.md`,
-   대상 `extracted/*`, 선별된 위키 페이지
+2. 이번 작업에 필요한 것만 복사한다 — `09_TEMPLATES/AGENTS.md`, `index.md`,
+   대상 `.sb/extracted/*`, 선별된 위키 페이지
 3. CLI를 그 디렉터리에서 서브프로세스로 실행한다
 4. **스키마를 CLI에 강제**하고 구조화된 결과를 받는다 (아래)
 5. 디렉터리를 폐기한다
@@ -414,9 +449,10 @@ Claude Code는 `--json-schema`, Codex는 `--output-schema`로 스키마를 강�
 어댑터에 `supportsSchema: boolean`을 둡니다. Gemini만 v0.3의 원래 경로를 씁니다.
 
 **`path`에는 정규식 제약을 겁니다.** M0 실측에서 모델이 지시를 무시하고
-`entities/에이콤(주).md`를 내놨습니다(우리가 지시한 `wiki/` 접두사 누락, 괄호 포함).
+`entities/에이콤(주).md`를 내놨습니다(당시 지시한 접두사 `wiki/` 누락, 괄호 포함 —
+접두사는 그 뒤 `02_NOTES/`로 바뀌었고 측정 기록은 그대로 둡니다).
 프롬프트 지시만으로는 부족합니다:
-`^wiki/(sources|entities|concepts|synthesis)/[a-z0-9-]+\.md$`.
+`^02_NOTES/(sources|entities|concepts|synthesis)/[a-z0-9-]+\.md$`.
 §9.2 `sanitizeTitle`과 이중 방어입니다.
 
 쓰기 경로는 MCP로 대체하지 않습니다 — 에이전트가 쓰기 도구를 직접 호출하게 되면
@@ -559,12 +595,12 @@ Warning: MCP servers are configured but disabled because this folder is untruste
 
 **품질 하한은 공급자와 무관하게 앱이 강제합니다** — ChangeSet 스키마·`path` 정규식·
 `sanitizeTitle`·앵커 인용 존재·앵커 실재·Lint #11·`baseHash`, 그리고 사람의 diff 승인.
-8개 관문 중 7개가 앱의 결정론적 검사입니다. 공급자를 바꿔 나빠질 수 있는 것은
+9개 관문 중 8개가 앱의 결정론적 검사입니다. 공급자를 바꿔 나빠질 수 있는 것은
 **내용의 질**이지 **형식의 안전**이 아닙니다.
 
 ### 7.3 스키마 파일 이름
 
-정본은 `schema/AGENTS.md` 하나이고, 격리 작업 디렉터리에 각 CLI가 찾는 이름으로
+정본은 `09_TEMPLATES/AGENTS.md` 하나이고, 격리 작업 디렉터리에 각 CLI가 찾는 이름으로
 포인터 파일을 생성합니다.
 
 | CLI | 규약 파일명 | 근거 |
@@ -588,9 +624,9 @@ Claude Code와 Gemini CLI는 `PreToolUse` 훅이 동작하므로, 에이전트�
   "summary": "킥오프 발표에서 협력사 3곳과 마일스톤 5개를 확인",
   "discussion": "계약 갱신일이 8월 메일과 어긋납니다. 어느 쪽이 최신입니까?",
   "ops": [
-    { "op": "create", "path": "wiki/entities/acme-corp.md",
+    { "op": "create", "path": "02_NOTES/entities/acme-corp.md",
       "baseHash": null, "content": "---\nid: ent-acme-corp\n..." },
-    { "op": "update", "path": "wiki/concepts/contract-renewal.md",
+    { "op": "update", "path": "02_NOTES/concepts/contract-renewal.md",
       "baseHash": "sha256:9f2a...", "content": "..." }
   ]
 }
@@ -694,7 +730,7 @@ diff가 오염되지 않습니다.
 
 `.gitignore`와 같은 문법(`!` 부정 포함), 하위 디렉터리 스코프도 동일.
 **추가로 제외만 할 뿐 다시 포함시키지는 않습니다.**
-`sources/`를 네트워크 공유에 걸 때 필요합니다.
+`01_SOURCES/`를 네트워크 공유에 걸 때 필요합니다.
 
 ### 9.4 비용·토큰 상한
 
@@ -728,7 +764,7 @@ diff가 오염되지 않습니다.
 로컬 쿼리 로그는 **기본 비활성**입니다. 설정에서 명시적으로 켜야 하고,
 끄기 설정이 항상 우선합니다. 회사 도구로서의 기본 자세입니다.
 
-### 9.6 한국어 작문 규칙 (`schema/AGENTS.md`)
+### 9.6 한국어 작문 규칙 (`09_TEMPLATES/AGENTS.md`)
 
 LLM이 위키 페이지 본문·`summary`·질의 답변을 쓸 때 지킬 규칙을 스키마에 넣습니다.
 Lint #11이 **사후 검출**이라면 이것은 **사전 예방**입니다.
@@ -790,7 +826,7 @@ Lint #11이 **사후 검출**이라면 이것은 **사전 예방**입니다.
 | 위키 페이지 | 전량. 작고 텍스트라 빠름 |
 | index.md / log.md | 안 함. 각 클라이언트가 재생성 |
 | 원본 파일(blob) | **지연 다운로드.** 인용 클릭 또는 "오프라인 고정" 시에만 |
-| extracted/ | 지연. 없으면 blob 받아 로컬 재추출 |
+| .sb/extracted/ | 지연. 없으면 blob 받아 로컬 재추출 |
 | 이벤트 로그 | 커서 기반 pull |
 
 ### 10.3 신원과 인증
@@ -833,7 +869,7 @@ PUT /v1/spaces/ACME/pages/ent-acme-corp     If-Match: 12
 main (Node)                       renderer (React + TS)
 ├─ space/      공간 열기·감시      ├─ shell/      3-pane
 ├─ extract/    텍스트 + 구조 추출  ├─ ingest/     드롭 → 진행 → ★diff 검토
-├─ index/      SQLite FTS5         ├─ wiki/       페이지 뷰·편집·그래프
+├─ index/      SQLite FTS5         ├─ notes/      페이지 뷰·편집·그래프
 ├─ graph/      링크 그래프 분석    ├─ query/      질의 · 인용 · Marp
 ├─ agent/      CLI 어댑터 3종      ├─ lint/       점검 결과함
 ├─ mcp/        내장 MCP 서버(조건) ├─ sync/       기여 · 채택 · 병합

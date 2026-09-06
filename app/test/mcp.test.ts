@@ -134,7 +134,7 @@ const page = (id: string, title: string, body: string, summary = '') =>
 
 async function wiki(): Promise<Vault> {
   const v = await createVault(await fs.mkdtemp(path.join(os.tmpdir(), 'sb-mcp-')), { id: 'p', title: 'P', hub: null });
-  const w = (n: string, c: string) => fs.writeFile(path.join(v.root, 'wiki/entities', n), c, 'utf8');
+  const w = (n: string, c: string) => fs.writeFile(path.join(v.root, '02_NOTES/entities', n), c, 'utf8');
   await w('acme.md', page('ent-acme', '에이콤', '[[entities/beta|베타테크]] 와 거래한다.', '주 협력사.'));
   await w('beta.md', page('ent-beta', '베타테크', '[[entities/gamma|감마]] 에 납품한다.'));
   await w('gamma.md', page('ent-gamma', '감마', '납품을 받는다. 운송비가 오른다.'));
@@ -149,7 +149,7 @@ const call = async (v: Vault, name: string, args: Record<string, unknown>) => {
 
 test('search — 제목이 본문보다 먼저 걸린다', async () => {
   const v = await wiki();
-  assert.match(await call(v, 'search', { query: '에이콤' }), /wiki\/entities\/acme\.md — 에이콤 · 주 협력사\./);
+  assert.match(await call(v, 'search', { query: '에이콤' }), /02_NOTES\/entities\/acme\.md — 에이콤 · 주 협력사\./);
   const r = await call(v, 'search', { query: '운송비' });
   assert.match(r, /gamma\.md/);
   assert.equal(await call(v, 'search', { query: '없는말' }), '결과가 없습니다.');
@@ -162,38 +162,38 @@ test('search — 빈 질의는 던진다', async () => {
 
 test('get_page — 전문을 돌려주고 없는 페이지는 던진다', async () => {
   const v = await wiki();
-  const r = await call(v, 'get_page', { path: 'wiki/entities/acme.md' });
+  const r = await call(v, 'get_page', { path: '02_NOTES/entities/acme.md' });
   assert.match(r, /에이콤/);
   assert.match(r, /베타테크/);
-  await assert.rejects(() => call(v, 'get_page', { path: 'wiki/entities/없음.md' }), /없는 페이지/);
+  await assert.rejects(() => call(v, 'get_page', { path: '02_NOTES/entities/없음.md' }), /없는 페이지/);
 });
 
 test('get_page — wiki 밖은 못 읽는다. 이걸 안 막으면 금고 전체가 샌다', async () => {
   const v = await wiki();
-  for (const bad of ['../../etc/passwd', '.sb/config.json', 'sources/킥오프.pptx', '/etc/passwd', 'wiki/../.sb/config.json']) {
+  for (const bad of ['../../etc/passwd', '.sb/config.json', 'sources/킥오프.pptx', '/etc/passwd', '02_NOTES/../.sb/config.json']) {
     await assert.rejects(() => call(v, 'get_page', { path: bad }), /읽을 수 없는 경로/, bad);
   }
 });
 
 test('neighbors — 링크로 이어진 페이지만 낸다', async () => {
   const v = await wiki();
-  const r = await call(v, 'neighbors', { path: 'wiki/entities/beta.md' });
+  const r = await call(v, 'neighbors', { path: '02_NOTES/entities/beta.md' });
   assert.match(r, /acme\.md/);
   assert.match(r, /gamma\.md/);
-  assert.equal(await call(v, 'neighbors', { path: 'wiki/entities/delta.md' }), '이어진 페이지가 없습니다.');
+  assert.equal(await call(v, 'neighbors', { path: '02_NOTES/entities/delta.md' }), '이어진 페이지가 없습니다.');
 });
 
 test('path — 최단 경로를 제목으로 낸다', async () => {
   const v = await wiki();
-  assert.equal(await call(v, 'path', { from: 'wiki/entities/acme.md', to: 'wiki/entities/gamma.md' }), '에이콤 → 베타테크 → 감마');
-  assert.equal(await call(v, 'path', { from: 'wiki/entities/acme.md', to: 'wiki/entities/acme.md' }), '에이콤');
-  assert.equal(await call(v, 'path', { from: 'wiki/entities/acme.md', to: 'wiki/entities/delta.md' }), '이어지는 경로가 없습니다.');
+  assert.equal(await call(v, 'path', { from: '02_NOTES/entities/acme.md', to: '02_NOTES/entities/gamma.md' }), '에이콤 → 베타테크 → 감마');
+  assert.equal(await call(v, 'path', { from: '02_NOTES/entities/acme.md', to: '02_NOTES/entities/acme.md' }), '에이콤');
+  assert.equal(await call(v, 'path', { from: '02_NOTES/entities/acme.md', to: '02_NOTES/entities/delta.md' }), '이어지는 경로가 없습니다.');
 });
 
 test('승인 직후의 변경이 바로 보인다 — 호출할 때마다 디스크를 다시 읽는다', async () => {
   const v = await wiki();
   assert.equal(await call(v, 'search', { query: '새페이지' }), '결과가 없습니다.');
-  await fs.writeFile(path.join(v.root, 'wiki/entities/new.md'), page('ent-new', '새페이지', '방금 승인됐다.'), 'utf8');
+  await fs.writeFile(path.join(v.root, '02_NOTES/entities/new.md'), page('ent-new', '새페이지', '방금 승인됐다.'), 'utf8');
   assert.match(await call(v, 'search', { query: '새페이지' }), /new\.md/);
 });
 

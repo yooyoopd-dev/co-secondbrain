@@ -13,7 +13,7 @@ import type { TokenStore } from '../src/main/creds.ts';
 
 const HUB = new URL('../../hub/src/', import.meta.url);
 const ADMIN = 'test-admin-key';
-const REL = 'wiki/entities/acme-corp.md';
+const REL = '02_NOTES/entities/acme-corp.md';
 
 let server: Server;
 let base: string;

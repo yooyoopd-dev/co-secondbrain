@@ -24,9 +24,9 @@ test('Vault 를 만들고 원본을 인제스트한다', async () => {
   assert.ok(r.relations > 0, '구조 관계가 하나도 없다');
 
   // 원본이 Vault 에 복사됐는가 (원본은 이후 절대 수정하지 않는다)
-  assert.ok((await fs.stat(path.join(root, 'sources/kickoff.docx'))).isFile());
+  assert.ok((await fs.stat(path.join(root, '01_SOURCES/kickoff.docx'))).isFile());
   // 추출 결과가 디스크에 남는가 (디스크가 진실이다)
-  assert.ok((await fs.stat(path.join(root, 'extracted/src-kickoff.json'))).isFile());
+  assert.ok((await fs.stat(path.join(root, '.sb/extracted/src-kickoff.json'))).isFile());
   s.close();
 });
 
@@ -67,7 +67,7 @@ test('이메일 여러 통을 넣으면 스레드가 복원된다', async () => 
   const r = await s.ingest([f('mail-3.eml'), f('mail-1.eml'), f('mail-2.eml')]);
   assert.deepEqual(r.failed, []);
   const rels = JSON.parse(
-    await fs.readFile(path.join(root, 'extracted/__threads__.relations.json'), 'utf8'),
+    await fs.readFile(path.join(root, '.sb/extracted/__threads__.relations.json'), 'utf8'),
   ) as { kind: string }[];
   assert.equal(rels.length, 2, `답장 관계 2건이어야 하는데 ${rels.length}건`);
   assert.ok(rels.every((x) => x.kind === 'replies-to'));
@@ -80,7 +80,7 @@ test('닫았다 다시 열면 색인이 재생성된다 (색인은 캐시다)', 
   assert.ok(s.search('협력사').length > 0);
   s.close();
 
-  // 색인 파일을 지워도 extracted/ 에서 복구돼야 한다
+  // 색인 파일을 지워도 .sb/extracted/ 에서 복구돼야 한다
   await fs.rm(path.join(root, '.sb/catalog.sqlite'), { force: true });
   const s2 = new Store();
   await s2.open(root);
@@ -104,4 +104,66 @@ test('원본 전문을 앵커째로 되읽을 수 있다 (원문 뷰어용)', as
   assert.equal(e.chunks[0]?.anchor.locator, 'slide-1');
   assert.equal(await s.readSource('src-없는것'), null);
   s.close();
+});
+
+/* ---------------- 설정 · 내 맥락 ---------------- */
+
+test('설정은 금고 경로와 판을 준다. 안 열었으면 null 이다', async () => {
+  const s = new Store();
+  const before = await s.settings('9.9.9');
+  assert.equal(before.version, '9.9.9');
+  assert.equal(before.vaultRoot, null);
+  assert.equal(before.personal, null);
+
+  const root = await tmp();
+  await s.open(root, { id: 'personal', title: '개인 금고' });
+  const after = await s.settings('9.9.9');
+  assert.equal(after.vaultRoot, root);
+  assert.equal(after.vaultTitle, '개인 금고');
+  assert.equal(after.personal, true);
+  assert.deepEqual(after.providers.map((p) => p.id), ['claude-code', 'gemini', 'codex']);
+});
+
+test('금고를 닫으면 설정에서도 사라진다', async () => {
+  const { s } = await opened();
+  s.close();
+  const st = await s.settings('9.9.9');
+  assert.equal(st.vaultRoot, null);
+  await assert.rejects(() => s.listSources(), /열려 있지 않습니다/);
+});
+
+test('공급자 선택은 파일에 남고 다시 읽힌다', async () => {
+  const dir = await tmp();
+  const prefsFile = path.join(dir, 'prefs.json');
+  const a = new Store({ prefsFile });
+  await a.setProvider('gemini');
+  assert.equal((await a.settings('0')).provider, 'gemini');
+
+  const b = new Store({ prefsFile });
+  await b.loadPrefs();
+  assert.equal((await b.settings('0')).provider, 'gemini');
+
+  await b.setProvider(null);
+  const c = new Store({ prefsFile });
+  await c.loadPrefs();
+  assert.equal((await c.settings('0')).provider, null);
+});
+
+test('설정 파일이 깨져 있으면 자동으로 돌아간다', async () => {
+  const dir = await tmp();
+  const prefsFile = path.join(dir, 'prefs.json');
+  await fs.writeFile(prefsFile, '{ 이건 JSON 이 아니다', 'utf8');
+  const s = new Store({ prefsFile });
+  await s.loadPrefs();
+  assert.equal((await s.settings('0')).provider, null);
+});
+
+test('내 맥락은 안 적었으면 빈 것이고, 적으면 금고 안 파일이 된다', async () => {
+  const { s, root } = await opened();
+  assert.deepEqual(await s.coreContext(), { who: '', why: '', output: '' });
+
+  await s.setCoreContext({ who: '구매팀 대리.', why: '', output: '근거 딸린 한 문단.' });
+  const md = await fs.readFile(path.join(root, '09_TEMPLATES/me.md'), 'utf8');
+  assert.match(md, /구매팀 대리\./);
+  assert.deepEqual(await s.coreContext(), { who: '구매팀 대리.', why: '', output: '근거 딸린 한 문단.' });
 });

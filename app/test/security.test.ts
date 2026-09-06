@@ -23,8 +23,8 @@ const ATTACKS: [string, string][] = [
 
 test('공격 문자열 14종 전부 Vault 안으로 정규화된다', () => {
   for (const [title, label] of ATTACKS) {
-    const p = safePagePath('/vault', 'wiki/entities', title);
-    assert.ok(p.startsWith('/vault/wiki/entities/'), `${label}: ${p}`);
+    const p = safePagePath('/vault', '02_NOTES/entities', title);
+    assert.ok(p.startsWith('/vault/02_NOTES/entities/'), `${label}: ${p}`);
     assert.ok(!p.includes('..'), `${label}: 상대 경로 조각이 남음 — ${p}`);
   }
 });
@@ -48,7 +48,7 @@ test('길이 상한이 걸린다', () => {
 test('safeJoin 은 Vault 밖을 던진다', () => {
   assert.throws(() => safeJoin('/vault', '../etc/passwd'), /경로 탈출/);
   assert.throws(() => safeJoin('/vault', 'a', '..', '..', 'b'), /경로 탈출/);
-  assert.doesNotThrow(() => safeJoin('/vault', 'wiki', 'entities'));
+  assert.doesNotThrow(() => safeJoin('/vault', '02_NOTES', 'entities'));
 });
 
 test('sourceId 는 앵커 인용에 쓸 수 있는 형태다', () => {
