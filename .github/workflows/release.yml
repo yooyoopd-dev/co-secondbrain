@@ -1,0 +1,66 @@
+# Windows 배포본을 만든다. 사내 PC 에도 이 컨테이너에도 Windows 빌드 환경이 없어
+# (ROADMAP 20번) 여기가 유일한 exe 생산지다.
+#
+# 만든 것을 그냥 올리지 않는다. **묶은 것을 실제로 띄워 스모크 20건을 통과시킨 뒤에만**
+# 릴리스로 간다. asar 안의 main·preload 가 도는지는 소스로 도는 검사가 말해 주지 않는다.
+name: release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: 의존성
+        working-directory: app
+        run: npm ci
+
+      - name: 검사 (타입 + 단위)
+        working-directory: app
+        run: npm run check
+
+      - name: 빌드
+        working-directory: app
+        run: npm run build
+
+      - name: 단일 exe 로 묶는다
+        working-directory: app
+        run: npx electron-builder --win --publish never
+
+      # 여기가 이 워크플로의 핵심이다. 푼 것을 띄워 window.sb 표면까지 확인한다.
+      # 포터블 exe 는 자기를 풀고 자식을 띄우는 껍데기라 win-unpacked 쪽을 잡는다.
+      - name: 묶은 것이 실제로 뜨는가
+        working-directory: app
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: |
+          npm i -g playwright
+          $exe = Join-Path (Resolve-Path release/win-unpacked) 'co-secondbrain.exe'
+          if (-not (Test-Path $exe)) { throw "푼 실행 파일이 없습니다: $exe" }
+          $env:SB_SMOKE_EXE = $exe
+          node ../spikes/app/smoke.mjs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: co-secondbrain-portable
+          path: app/release/*.exe
+          if-no-files-found: error
+
+      - name: 배포
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: pwsh .github/scripts/publish.ps1

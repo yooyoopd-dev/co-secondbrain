@@ -47,12 +47,18 @@ const ok = (name, cond, got) => {
   if (!cond) fails.push(name);
 };
 
+// 묶은 것을 검사할 때는 `SB_SMOKE_EXE` 로 exe 를 직접 가리킨다. 소스가 아니라 asar 안의
+// main·preload 가 도는지 보려는 것이라, 여기가 통과해야 배포본이 뜬다고 말할 수 있다.
+// 포터블 exe 말고 `win-unpacked/` 쪽을 준다 — 포터블은 자기를 풀고 자식을 띄우는 껍데기다.
+const packaged = process.env['SB_SMOKE_EXE'] ?? null;
+
 // 컨테이너가 root 라 크로미움 OS 샌드박스를 끈다. 렌더러의 webPreferences.sandbox 와 무관하다.
 // 전역 playwright 는 자기 node_modules 에서 electron 을 찾는다. 앱 쪽 것을 직접 가리킨다.
-const exeName = fs.readFileSync(path.join(APP, 'node_modules/electron/path.txt'), 'utf8').trim();
-const executablePath = path.join(APP, 'node_modules/electron/dist', exeName);
+const executablePath =
+  packaged ??
+  path.join(APP, 'node_modules/electron/dist', fs.readFileSync(path.join(APP, 'node_modules/electron/path.txt'), 'utf8').trim());
 
-const app = await _electron.launch({ args: ['.', '--no-sandbox'], cwd: APP, executablePath });
+const app = await _electron.launch({ args: packaged ? [] : ['.', '--no-sandbox'], cwd: APP, executablePath });
 const win = await app.firstWindow();
 await win.waitForLoadState('domcontentloaded');
 
