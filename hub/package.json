@@ -1,0 +1,19 @@
+{
+  "name": "co-hub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CO-Hub — 사내 로컬 동기화 서버. 런타임 의존성 없음",
+  "main": "dist/main.js",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --no-warnings --experimental-strip-types --test test/*.test.ts",
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "check": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "name": "co-secondbrain",
+  "version": "0.1.0",
+  "private": true,
+  "description": "프로젝트 단위 Second Brain — 개인 Vault (M1)",
+  "author": "yooyoopd-dev",
+  "type": "module",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --no-warnings --experimental-strip-types --test test/*.test.ts",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "vite build",
+    "build": "npm run build:main && npm run build:preload && npm run build:renderer",
+    "dev": "vite",
+    "check": "npm run typecheck && npm test",
+    "build:preload": "esbuild src/main/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/main/preload.cjs",
+    "start": "electron .",
+    "smoke": "xvfb-run -a node ../spikes/app/smoke.mjs",
+    "smoke:win": "node ../spikes/app/smoke.mjs",
+    "dist": "npm run build && electron-builder --win --publish never"
+  },
+  "dependencies": {
+    "@kenjiuno/msgreader": "^1.24.0",
+    "exceljs": "^4.4.0",
+    "fast-xml-parser": "^5.0.0",
+    "graphology": "^0.26.0",
+    "graphology-communities-louvain": "^2.0.2",
+    "jszip": "^3.10.1",
+    "mailparser": "^3.7.0",
+    "mammoth": "^1.9.0",
+    "pdfjs-dist": "^5.0.0",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/mailparser": "^3.4.6",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "electron": "^38.8.6",
+    "electron-builder": "^26.15.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  }
+}

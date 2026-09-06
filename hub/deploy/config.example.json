@@ -1,0 +1,6 @@
+{
+  "bind": "0.0.0.0",
+  "port": 8787,
+  "dataDir": "/srv/co-hub",
+  "adminKey": "여기에-공백-없는-ASCII-비밀을-넣으십시오"
+}

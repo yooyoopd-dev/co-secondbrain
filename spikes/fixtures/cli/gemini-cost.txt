@@ -1,0 +1,11 @@
+{
+ "summary": "델타물류 월 운송비 정보 추가",
+ "ops": [
+  {
+   "op": "create",
+   "path": "wiki/entities/ent-delta-logistics.md",
+   "baseHash": null,
+   "content": "---\nid: ent-delta-logistics\ntype: entity\ntitle: 델타물류\nsummary: 델타물류의 월 운송비 정보.\naliases: []\ntags: []\nclaims:\n  - text: 델타물류의 월 운송비는 1,200만원이다.\n    source: src-cost#원가!D4\n    confidence: EXTRACTED\nopen_questions: []\nderived_from: null\ngenerated_by: claude-code\nupdated: 2026-09-05T00:00:00.000Z\nupdated_by: app\n---\n# 델타물류\n\n델타물류의 월 운송비는 1,200만원이다.[^src-cost#원가!D4]"
+  }
+ ]
+}

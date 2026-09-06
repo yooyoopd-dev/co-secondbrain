@@ -1,0 +1,84 @@
+{
+ "runs": [
+  {
+   "platform": "linux",
+   "node": "v22.22.2",
+   "at": "2026-09-05T10:07:29.828Z",
+   "rows": [
+    {
+     "cli": "claude-code",
+     "installed": true,
+     "version": "2.1.261 (Claude Code)",
+     "shell": false,
+     "case": "kickoff",
+     "verdict": "PASS",
+     "ms": 35125,
+     "reasons": [],
+     "verified": true
+    },
+    {
+     "cli": "claude-code",
+     "installed": true,
+     "version": "2.1.261 (Claude Code)",
+     "shell": false,
+     "case": "contract",
+     "verdict": "PASS",
+     "ms": 43791,
+     "reasons": [],
+     "verified": true
+    },
+    {
+     "cli": "claude-code",
+     "installed": true,
+     "version": "2.1.261 (Claude Code)",
+     "shell": false,
+     "case": "cost",
+     "verdict": "PASS",
+     "ms": 25578,
+     "reasons": [],
+     "verified": true
+    }
+   ]
+  },
+  {
+   "platform": "linux",
+   "node": "v22.22.2",
+   "at": "2026-09-05T10:08:29.837Z",
+   "rows": [
+    {
+     "cli": "gemini",
+     "installed": true,
+     "version": "0.58.0",
+     "shell": false,
+     "case": "kickoff",
+     "verdict": "PASS",
+     "ms": 30508,
+     "reasons": [],
+     "verified": true
+    },
+    {
+     "cli": "gemini",
+     "installed": true,
+     "version": "0.58.0",
+     "shell": false,
+     "case": "contract",
+     "verdict": "PASS",
+     "ms": 16153,
+     "reasons": [],
+     "verified": true
+    },
+    {
+     "cli": "gemini",
+     "installed": true,
+     "version": "0.58.0",
+     "shell": false,
+     "case": "cost",
+     "verdict": "PASS",
+     "ms": 10731,
+     "reasons": [],
+     "verified": true
+    }
+   ]
+  }
+ ]
+}
