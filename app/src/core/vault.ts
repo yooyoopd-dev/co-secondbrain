@@ -20,6 +20,8 @@ export const VAULT_DIRS = [
   '.sb',
   '.sb/cache',
   '.sb/history',
+  '.sb/sync',
+  '.sb/sync/base',
 ] as const;
 
 export interface VaultConfig {

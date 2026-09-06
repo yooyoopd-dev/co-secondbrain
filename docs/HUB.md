@@ -77,7 +77,6 @@ CREATE TABLE spaces (
   id TEXT PRIMARY KEY,            -- 'ACME'
   title TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  review_required INTEGER NOT NULL DEFAULT 0   -- 검토 큐 강제 여부
 );
 
 CREATE TABLE members (
@@ -133,14 +132,6 @@ CREATE TABLE events (
   page_id TEXT, ref TEXT, title TEXT,
   actor TEXT NOT NULL, at TEXT NOT NULL
 );
-
-CREATE TABLE proposals (
-  id TEXT PRIMARY KEY, space_id TEXT NOT NULL,
-  author TEXT NOT NULL, created_at TEXT NOT NULL,
-  status TEXT NOT NULL,           -- open | approved | rejected
-  note TEXT, changeset TEXT NOT NULL,   -- ChangeSet JSON
-  decided_by TEXT, decided_at TEXT
-);
 ```
 
 `page_versions`를 전량 보관하는 이유: 3-way 병합의 base와 되돌리기가 여기서 나옵니다.
@@ -167,7 +158,7 @@ PUT  /v1/spaces/{s}/pages/{pageId}
      body: { path, content }
      → 200 { version, hash }
      → 409 { serverVersion, serverContent, baseContent }   # 3-way 병합 재료 동봉
-     → 403 권한 없음 / 412 검토 큐 필수 공간
+     → 403 권한 없음
 
 DELETE /v1/spaces/{s}/pages/{pageId}   If-Match: {baseVersion}
 ```
@@ -186,19 +177,10 @@ GET  /v1/spaces/{s}/blobs/{sha256}   # Range 지원
 
 콘텐츠 주소 방식이라 동일 파일을 여러 명이 올려도 한 번만 저장됩니다.
 
-### 검토 큐
-
-```
-POST /v1/spaces/{s}/proposals        body: { note, changeset }
-GET  /v1/spaces/{s}/proposals?status=open
-POST /v1/spaces/{s}/proposals/{id}/approve    # 서버가 ops를 순차 적용. 하나라도 409면 전체 롤백
-POST /v1/spaces/{s}/proposals/{id}/reject     body: { note }
-```
-
 ### 관리
 
 ```
-POST /v1/admin/spaces                 { id, title, reviewRequired }
+POST /v1/admin/spaces                 { id, title }
 POST /v1/admin/members                { spaceId, userId, role }
 POST /v1/admin/tokens                 { userId, expiresAt }  → 평문 토큰 1회만 반환
 POST /v1/admin/tokens/{id}/revoke
@@ -209,21 +191,52 @@ GET  /v1/health
 
 ## 5. 클라이언트 동기화 알고리즘
 
+구현은 `app/src/core/sync/engine.ts` 입니다.
+
 ```
-1. GET /changes?since=<로컬 커서>
-2. 원격 변경을 로컬 미러에 반영
-   - 로컬에 보류 변경이 없는 페이지 → 그대로 덮어씀
-   - 보류 변경이 있는 페이지 → 충돌 표시, 사람이 해결
-3. .sb/sync/pending 을 순회하며 PUT
-   - 200 → 보류 제거, 로컬 버전 갱신
-   - 409 → base/서버/내 것으로 3-way 병합 화면
-4. 커서 저장
-5. index.md · log.md 재생성 (동기화 대상 아님)
+1. 로컬 위키를 훑어 보류 변경을 계산한다
+   - 디스크 내용이 .sb/sync/base/ 의 기준본과 다르면 보류
+   - 기준본만 있고 파일이 없으면 삭제 보류
+2. GET /changes?since=<로컬 커서> → 바뀐 pageId 목록
+3. 보류가 없는 페이지만 원격 내용으로 덮는다. 기준본과 판본을 같이 갱신한다
+4. 보류 변경을 PUT · DELETE 한다 (If-Match: 마지막 판본)
+   - 200 → 기준본 갱신
+   - 409 → 기준본 · 서버 · 내 것으로 3-way 병합안을 만들어 보고한다. 디스크는 안 건드린다
+5. 커서 저장
+6. 사람이 고른 병합 결과를 If-Match: 서버 판본 으로 다시 올린다
 ```
 
-**조용한 덮어쓰기는 어느 방향으로도 일어나지 않습니다.**
+**조용한 덮어쓰기는 어느 방향으로도 일어나지 않습니다.** 병합안에 충돌 표시가 남아 있으면
+6단계가 거절합니다. `<<<<<<<` 가 그대로 올라간 페이지는 다음 사람이 읽을 때 더 큰 비용입니다.
 
-blob은 이 흐름에 없습니다. 인용을 클릭하거나 "오프라인 고정"을 켤 때 개별로 받습니다.
+동기화 대상은 `wiki/{sources,entities,concepts,synthesis}/*.md` 입니다. index.md 와 log.md 는
+각 클라이언트가 다시 만듭니다. blob은 이 흐름에 없습니다. 인용을 클릭하거나 "오프라인 고정"을
+켤 때 개별로 받습니다.
+
+### 5.1 보류 큐 파일을 두지 않습니다
+
+v1 계획은 `.sb/sync/pending` 에 보류 변경을 쌓는 것이었습니다. 구현에서는 큐를 없애고
+**디스크와 기준본의 차이로 보류를 계산합니다.** 큐 파일과 디스크가 어긋나면 어느 쪽이
+진실인지 정할 방법이 없고 앱이 비정상 종료하면 실제로 어긋납니다. "디스크가 진실이다"
+(`PLAN.md` §3)를 동기화에서도 지키면 상태가 하나 줄어듭니다. 오프라인 큐도 따로
+만들지 않습니다 — 편집이 디스크에 남아 있으면 그것이 곧 큐입니다.
+
+허브가 준 `path` 는 그대로 믿지 않고 `PAGE_PATH_RE` 로 다시 검사합니다. 위키 밖으로
+쓰는 길을 막습니다.
+
+### 5.2 실측
+
+`spikes/sync/offline.ts` — 허브 하나와 금고 둘을 실제로 띄우고 24개 항목을 판정합니다.
+
+| 상황 | 결과 |
+|---|---|
+| 오프라인 편집 | 아무것도 올리지 않고 디스크에 그대로 남음 |
+| 서로 다른 줄을 고침 | 409 → 병합 깨끗함. 두 고침이 모두 남음 |
+| 같은 줄을 다르게 고침 | 409 → 충돌 표시. 자동으로 고르지 않음 |
+| 충돌 표시가 남은 채 올리기 | 거절 |
+| 사람이 고른 결과 | 올라가고 반대쪽 금고까지 같아짐 |
+
+24/24 통과. 최종 두 금고의 파일이 바이트까지 같고 세 고침이 모두 남았습니다.
 
 ---
 
@@ -313,3 +326,20 @@ blob 합계       2.83 GB      ← DB의 187배
 3. 대용량 blob(200MB PPT) 업로드·Range 다운로드 안정성
 4. systemd 유닛 등록 및 `ufw` 인바운드 규칙 절차 (Ubuntu)
 5. MCP HTTP 엔드포인트를 CLI 3종이 실제로 붙는지 (§5.5 전제 확인)
+
+---
+
+## 9. 검토 큐를 만들지 않습니다
+
+v1 계획에는 `proposals` 테이블과 승인 엔드포인트가 있었습니다. 지정한 admin 이 쓰기를
+승인하는 구조로, 목적은 동시 쓰기 충돌 방지였습니다. **측정 결과 그 목적이 이미 달성돼
+있어 폐기합니다.**
+
+- `spikes/hub/concurrent.ts` — 2프로세스 × 25회 경합에서 충돌 재시도 34회, 줄 50/50 보존.
+  낙관적 동시성과 409 가 돌려주는 병합 재료만으로 무손실이었습니다
+- 승인 창구를 두면 충돌이 사라지지 않고 승인 시점으로 옮겨 갑니다. 같은 페이지를 고친
+  제안 두 건 중 앞 건이 승인되는 순간 뒤 건의 기준 판본이 낡습니다
+- 승인자 한 명은 단일 실패점. 자리를 비운 시간만큼 제안이 썩습니다
+
+편집 통제가 필요해지면 v2 에서 다시 봅니다. 그때 적을 목적은 충돌 방지가 아닌
+품질 게이트입니다.

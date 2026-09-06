@@ -73,9 +73,7 @@ export function createHub(cfg: HubConfig) {
         const id = str(body['id']);
         const title = str(body['title']);
         if (!id || !title) return json(res, 400, { error: 'id 와 title 이 필요합니다' });
-        db.prepare('INSERT OR REPLACE INTO spaces (id, title, created_at, review_required) VALUES (?,?,?,?)').run(
-          id, title, now(), body['reviewRequired'] ? 1 : 0,
-        );
+        db.prepare('INSERT OR REPLACE INTO spaces (id, title, created_at) VALUES (?,?,?)').run(id, title, now());
         return json(res, 200, { id, title });
       }
       if (method === 'POST' && seg[2] === 'members') {

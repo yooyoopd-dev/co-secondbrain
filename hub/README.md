@@ -48,6 +48,7 @@ node --experimental-strip-types ../spikes/hub/concurrent.ts   # 2프로세스 �
 
 ## 아직 없는 것
 
-- **검토 큐** (`/v1/spaces/{s}/proposals`) — 서버가 ChangeSet 을 적용해야 해서
-  동기화 클라이언트(ROADMAP 16번)와 같이 만든다
+- **검토 큐** — **안 만든다.** 승인 창구를 두는 목적이 동시 쓰기 충돌 방지였는데,
+  2프로세스 × 25회 경합에서 충돌 34회에 무손실이 나와 낙관적 동시성만으로 충분하다.
+  승인자를 두면 충돌이 사라지지 않고 승인 시점으로 옮겨 간다 ([`HUB.md`](../docs/HUB.md) §9)
 - **MCP HTTP 엔드포인트** ([`HUB.md`](../docs/HUB.md) §5.5) — 앱 내장 MCP 서버가 먼저다
