@@ -301,9 +301,9 @@ journal에도 남깁니다:
 | # | 항목 | 왜 모르나 |
 |---|---|---|
 | ~~W3~~ | ~~Gemini가 스키마 없이 유효한 ChangeSet을 내는가~~ **측정 완료** | 2026-09-07 사내 기업계정 0.58.0, n=10: 유효 JSON·스키마·앵커 전부 100%, 재시도 0회. 아래 §10.1 |
-| W3b | Codex `codex exec` + `--output-schema` 실동작 | Codex가 있는 PC 필요 |
-| W10 | **한국어 문자 수 → 토큰 수 환산** | 미측정. §1의 Lint 토큰 추정이 여기 의존 |
-| W11 | Gemini 사내 쿼터 실제 상한 | 계약 조건 확인 불가 |
+| W3b | Codex `codex exec` + `--output-schema` 실동작 | **보류.** 사내 PC 미설치, 컨테이너는 egress 차단 ([`ROADMAP.md`](ROADMAP.md) §9.3) |
+| W10 | **한국어 문자 수 → 토큰 수 환산** | 미측정. §1의 Lint 토큰 추정이 여기 의존. 재는 방법은 [`ROADMAP.md`](ROADMAP.md) §9.1 |
+| W11 | Gemini 사내 쿼터 실제 상한 | 상한은 관리자 문의, 오류 모양은 봉투로 확인 ([`ROADMAP.md`](ROADMAP.md) §9.2) |
 
 ### 10.1 W3 — 이 설계의 전제였고, 이제 측정됐습니다
 

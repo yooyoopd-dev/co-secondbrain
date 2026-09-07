@@ -10,22 +10,14 @@
 // 출력은 손으로 옮겨 적을 수 있게 3줄이다. **무응답 칸이 0 이 아니면 그 회차는 표본이
 // 아니다** — 모델이 못 맞춘 것이 아니라 CLI 가 안 뜬 것이다.
 
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import { resolveBin } from './win-bin.mjs';
 
-// Windows 에서 실행 파일 자리를 먼저 찾는다. npm 전역 설치는 `gemini` · `gemini.cmd` ·
-// `gemini.ps1` 을 같이 깔고 `where` 는 확장자 없는 sh 껍데기를 먼저 준다. 그대로 띄우면
-// `spawn ... ENOENT` 로 죽는다. 2026-09-07 사내 PC 1회차가 그것 때문에 전부 넘어졌다.
-const BIN = (() => {
-  if (process.platform !== 'win32') return { path: 'gemini', shell: false };
-  const out = spawnSync('where', ['gemini'], { encoding: 'utf8' }).stdout ?? '';
-  const found = out.split(/\r?\n/).map((s) => s.trim()).filter((s) => /\.(exe|com|cmd|bat)$/i.test(s));
-  const pick = found.find((f) => /\.(exe|com)$/i.test(f)) ?? found[0];
-  if (!pick) {
-    console.error('gemini 를 찾지 못했습니다. `where gemini` 가 무엇을 주는지 확인하십시오.');
-    process.exit(2);
-  }
-  return { path: pick, shell: /\.(cmd|bat)$/i.test(pick) };
-})();
+const BIN = resolveBin('gemini');
+if (BIN === null) {
+  console.error('gemini 를 찾지 못했습니다. `where gemini` 가 무엇을 주는지 확인하십시오.');
+  process.exit(2);
+}
 
 /**
  * 프롬프트를 **stdin 으로** 넘긴다. `-p <프롬프트>` 로 argv 에 실으면 안 된다 —
