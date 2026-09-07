@@ -183,18 +183,30 @@ PATH 앞에 붙이므로 로그인 셸에서는 계속 nvm 판이 잡힙니다. 
 `/usr/local/bin` 판을 씁니다. 둘이 부딪히지 않습니다.
 
 ```bash
-# 인터넷이 되면
+# 인터넷이 되면 — /usr/bin/node 에 깔립니다
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt-get install -y nodejs
 
-# 안 되면 tarball. 개인 PC 에서 scp 로 보내 두었다면 그 경로를 씁니다
+# 안 되면 tarball — /usr/local/bin/node 에 깔립니다
+# 개인 PC 에서 scp 로 보내 두었다면 그 경로를 씁니다
 sudo tar -xJf ~/node-v22.22.2-linux-x64.tar.xz -C /usr/local --strip-components=1
-
-sudo -u co-hub /usr/local/bin/node --version     # 이게 되면 끝입니다
 ```
 
-이 다음부터 `node` 대신 `/usr/local/bin/node` 를 씁니다. 6번의 손띄우기도, 7번의
-`ExecStart` 도 이 경로입니다.
+**둘은 깔리는 자리가 다릅니다.** 어느 쪽을 쓰셨든 경로를 직접 찍지 말고 물어봅니다.
+`co-hub` 계정으로 물으므로 나오는 답이 곧 `sudo` 와 서비스가 쓸 경로입니다.
+
+```bash
+sudo -u co-hub sh -c 'command -v node; node --version'
+```
+
+경로 한 줄과 판 한 줄이 나오면 끝입니다. 그 경로를 적어 둡니다 — 6번의 손띄우기도,
+7번의 `ExecStart` 도 이 경로입니다.
+
+아무것도 안 나오면 아직 시스템 전체에 안 깔린 것입니다. 어디 있는지 봅니다.
+
+```bash
+ls -l /usr/bin/node /usr/local/bin/node
+```
 
 ## 3. 계정과 폴더
 
@@ -266,19 +278,20 @@ sudo chown co-hub:co-hub /srv/co-hub/config.json
 
 systemd 에 넣기 전에 됩니다. 잘못된 설정을 서비스로 감싸면 사유가 안 보입니다.
 
-**Node 를 절대 경로로 부릅니다.** `sudo` 는 PATH 를 `secure_path` 로 갈아 끼우기 때문에
-로그인 셸에서 되던 `node` 가 여기서는 안 될 수 있습니다 (2번).
+**`co-hub` 계정에게 물어서 나온 경로를 씁니다.** `sudo` 는 PATH 를 `secure_path` 로 갈아
+끼우기 때문에 로그인 셸에서 되던 `node` 가 여기서는 안 될 수 있습니다 (2번).
 
 ```bash
-readlink -f "$(command -v node)"    # /usr/bin/node 나 /usr/local/bin/node 여야 합니다
+sudo -u co-hub sh -c 'command -v node'
 ```
 
-`/home/...` 이나 `.nvm` 이 나오면 여기서 멈추고 2번으로 돌아가 Node 를 시스템 전체에
-깝니다. 그 경로를 그대로 쓰면 `Permission denied` 가 납니다 — `co-hub` 계정이 남의 홈을
-못 읽습니다.
+`/usr/bin/node` 나 `/usr/local/bin/node` 가 나와야 합니다. 아무것도 안 나오거나
+`/home/...` · `.nvm` 이 나오면 여기서 멈추고 2번으로 돌아갑니다. 홈 안의 경로를 그대로
+쓰면 `Permission denied` 가 납니다 — `co-hub` 계정이 남의 홈을 못 읽습니다.
 
 ```bash
-sudo -u co-hub /usr/local/bin/node /srv/co-hub/dist/main.js /srv/co-hub/config.json
+NODE=$(sudo -u co-hub sh -c 'command -v node')
+sudo -u co-hub $NODE /srv/co-hub/dist/main.js /srv/co-hub/config.json
 ```
 
 이렇게 나오면 뜬 것입니다.
@@ -309,10 +322,11 @@ sudo systemctl enable --now co-hub
 systemctl status co-hub
 ```
 
-유닛의 `ExecStart` 가 `/usr/bin/node` 를 가리킵니다. Node 가 다른 곳에 있으면 고칩니다.
+유닛의 `ExecStart` 가 `/usr/bin/node` 를 가리킵니다. 6번에서 확인한 경로가 그것이면
+그냥 둡니다. `/usr/local/bin/node` 였으면 고칩니다.
 
 ```bash
-readlink -f "$(command -v node)"
+sudo -u co-hub sh -c 'command -v node'
 sudo sed -i 's|/usr/bin/node|/usr/local/bin/node|' /etc/systemd/system/co-hub.service
 sudo systemctl daemon-reload
 ```
@@ -383,7 +397,8 @@ journalctl -u co-hub -n 50 --no-pager
 | 증상 | 볼 곳 |
 |---|---|
 | `adminKey 는 공백 없는 ASCII` | config.json 의 `adminKey` 에 한글이나 공백이 있습니다 |
-| `sudo: node: command not found` | `sudo` 가 PATH 를 갈아 끼웁니다. 절대 경로로 부르거나 Node 를 시스템 전체에 깝니다 (2번) |
+| `sudo: node: command not found` | `sudo` 가 PATH 를 갈아 끼웁니다. Node 를 시스템 전체에 깝니다 (2번) |
+| 시스템 전체에 깔았는데도 `command not found` | 경로를 찍은 것이 틀렸습니다. apt 는 `/usr/bin`, tarball 은 `/usr/local/bin` 입니다. `sudo -u co-hub sh -c 'command -v node'` 로 물어봅니다 |
 | `sudo: unable to execute .../node: Permission denied` | Node 가 남의 홈(nvm) 안에 있습니다. `co-hub` 계정이 못 읽습니다. 시스템 전체에 다시 깝니다 (2번) |
 | 바로 죽는다 | Node 판을 봅니다. `node -e "require('node:sqlite')"` |
 | 켜지는데 못 붙는다 | 방화벽과 `bind`. `0.0.0.0` 이어야 밖에서 붙습니다 |
