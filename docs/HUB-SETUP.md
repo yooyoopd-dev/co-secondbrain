@@ -58,24 +58,32 @@ sudo chown co-hub:co-hub /srv/co-hub
 
 ## 3. 빌드본 옮기기
 
-**서버에서 빌드하지 않습니다.** 개발 PC 에서 만들어 `dist/` 만 옮깁니다. 서버에 소스나 `node_modules` 를 둘 이유가 없습니다.
+**서버에서 빌드하지 않습니다.** 서버에 소스나 `node_modules` 를 둘 이유가 없습니다.
 
-개발 PC 에서
+### 받아서 옮기기 (권장)
+
+[릴리스](https://github.com/yooyoopd-dev/co-secondbrain/releases/latest)에 Windows exe 와
+같이 `co-hub-<판>.tgz` 가 올라갑니다. 인터넷 되는 곳에서 받아 USB 로 옮기십시오.
+
+```bash
+sudo tar -xzf co-hub-0.9.0-beta.tgz -C /srv/co-hub
+sudo chown -R co-hub:co-hub /srv/co-hub
+```
+
+`dist/` 와 `deploy/` 와 `README.md` 가 들어 있습니다. 12 KB 입니다 — 런타임 의존성이
+없어서 이만큼입니다.
+
+### 직접 빌드하기
 
 ```bash
 cd hub
 npm ci
 npm run check          # 타입 + 테스트 22건
 npm run build          # dist/ 가 생긴다
-tar -czf co-hub-dist.tgz dist deploy
+tar -czf co-hub-dist.tgz dist deploy README.md
 ```
 
-서버에서
-
-```bash
-sudo tar -xzf co-hub-dist.tgz -C /srv/co-hub
-sudo chown -R co-hub:co-hub /srv/co-hub
-```
+`tsc` 만 돌아서 어디서 빌드해도 결과가 같습니다. 리눅스에서 안 만들어도 됩니다.
 
 ## 4. config.json
 
@@ -111,7 +119,17 @@ systemd 에 넣기 전에 됩니다. 잘못된 설정을 서비스로 감싸면 
 sudo -u co-hub node /srv/co-hub/dist/main.js /srv/co-hub/config.json
 ```
 
-**성공하면 아무 말도 안 합니다.** 다른 창에서 확인합니다.
+이렇게 나오면 뜬 것입니다.
+
+```
+(node:3336) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+co-hub 0.0.0.0:8787 · /srv/co-hub
+```
+
+**`ExperimentalWarning` 은 정상입니다.** Node 22 가 `node:sqlite` 에 붙이는 경고이고
+동작에 지장이 없습니다. 보기 싫으면 `--no-warnings` 를 붙입니다.
+
+다른 창에서 확인합니다.
 
 ```bash
 curl http://127.0.0.1:8787/v1/health
@@ -200,6 +218,7 @@ journalctl -u co-hub -n 50 --no-pager
 | `adminKey 는 공백 없는 ASCII` | config.json 의 `adminKey` 에 한글이나 공백이 있습니다 |
 | 바로 죽는다 | Node 판을 봅니다. `node -e "require('node:sqlite')"` |
 | 켜지는데 못 붙는다 | 방화벽과 `bind`. `0.0.0.0` 이어야 밖에서 붙습니다 |
+| `ExperimentalWarning: SQLite` | 정상입니다. Node 22 가 `node:sqlite` 에 붙이는 경고입니다 |
 | 쓰기가 실패한다 | `ReadWritePaths` 와 `/srv/co-hub` 소유자 |
 | 클라이언트가 401 | 토큰이 다릅니다. 새로 발급합니다 |
 

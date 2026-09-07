@@ -277,3 +277,17 @@ test('#9 거부 — 자리가 `.sb/` 다. 동기화가 안 올린다', () => {
   // 개인의 판단이 동료에게 간다. 이름이 들어 있는 파일이다.
   assert.equal(REJECTED_PATH.startsWith('.sb/'), true);
 });
+
+test('#9 후보에 제목이 붙는다 — 화면이 id 를 보여주면 안 된다', () => {
+  const r = lint(
+    [
+      page('ent-a', '한빛소재', { body: '\n한 문장.[^src-kickoff#slide-1]\n' }),
+      page('ent-b', '한빛소재㈜', { body: '\n한 문장.[^src-kickoff#slide-1]\n' }),
+    ],
+    ANCHORS,
+  );
+  const f = r.findings.find((x) => x.check === 9)!;
+  assert.deepEqual([...f.labels!].sort(), ['한빛소재', '한빛소재㈜']);
+  // 거부는 이름으로 저장한다. 화면이 id 를 이름으로 되짚을 필요가 없다.
+  assert.equal(rejectionKey(f.labels![0], f.labels![1]), rejectionKey('한빛소재㈜', '한빛소재'));
+});

@@ -30,6 +30,12 @@ export interface Finding {
   page: string;
   /** 쌍 검사의 상대편 */
   related?: string;
+  /**
+   * #9 쌍의 제목. **화면은 id 를 보여주면 안 된다** — 사람은 `ent-a` 가 아니라
+   * "에이콤(주)" 를 보고 판정한다. 거부도 이름으로 저장하므로(lint/rejected.ts)
+   * 화면이 id 를 이름으로 되짚을 필요가 없어진다.
+   */
+  labels?: readonly [string, string];
   message: string;
   /** 사람이 뭘 하면 되는지 한 줄 */
   fix: string;
@@ -134,11 +140,13 @@ export function lint(
     (a, b) => community.has(a) && community.get(a) === community.get(b),
     rejected,
   );
+  const titleOf = new Map(pages.map((p) => [p.front.id, p.front.title]));
   for (const d of candidates) {
     findings.push({
       check: 9,
       page: d.a,
       related: d.b,
+      labels: [titleOf.get(d.a) ?? d.a, titleOf.get(d.b) ?? d.b],
       message: `같은 대상일 수 있습니다 (유사도 ${d.score.toFixed(3)}${d.sameCommunity ? ', 같은 커뮤니티' : ''})`,
       fix: '한쪽을 지우고 aliases 에 넣을지 검토합니다. 자동 병합하지 않습니다',
     });

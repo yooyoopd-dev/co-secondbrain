@@ -70,10 +70,27 @@ jobs:
           $env:SB_SMOKE_EXE = $exe
           node ../spikes/app/smoke.mjs
 
+      # 허브는 Ubuntu 에서 돌지만 만드는 것은 `tsc` 뿐이라 어디서 빌드해도 결과가 같다.
+      # 런타임 의존성이 없어서 `dist/` 와 `deploy/` 만 담으면 끝이다 (HUB-SETUP.md §3).
+      - name: 허브 묶음
+        working-directory: hub
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          npm run check
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $v = (Get-Content ../app/package.json -Raw | ConvertFrom-Json).version
+          tar -czf "../app/release/co-hub-$v.tgz" dist deploy README.md
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
       - uses: actions/upload-artifact@v4
         with:
           name: co-secondbrain-portable
-          path: app/release/*.exe
+          path: |
+            app/release/*.exe
+            app/release/*.tgz
           if-no-files-found: error
 
       - name: 배포
