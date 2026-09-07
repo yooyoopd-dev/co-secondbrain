@@ -1,0 +1,17 @@
+{
+ "summary": "에이콤(주) 엔티티 및 소스 페이지 생성",
+ "ops": [
+  {
+   "op": "create",
+   "path": "wiki/entities/ent-acom.md",
+   "baseHash": null,
+   "content": "---\nid: ent-acom\ntype: entity\ntitle: 에이콤(주)\nsummary: 2026년 하반기 주 협력사로 선정된 업체.\naliases: [\"에이콤\"]\ntags: []\nclaims:\n  - text: 에이콤(주)이 2026년 하반기 주 협력사로 선정됐다.\n    source: src-kickoff#slide-3\n    confidence: EXTRACTED\n  - text: 에이콤과의 계약 갱신일은 2026-12-31 이다.\n    source: src-kickoff#slide-12\n    confidence: EXTRACTED\nopen_questions: []\nderived_from: null\ngenerated_by: claude-code\nupdated: 2026-09-05T00:00:00.000Z\nupdated_by: app\n---\n# 에이콤(주)\n\n에이콤(주)이 2026년 하반기 주 협력사로 선정됐다.[^src-kickoff#slide-3] 에이콤과의 계약 갱신일은 2026-12-31 이다.[^src-kickoff#slide-12]\n"
+  },
+  {
+   "op": "create",
+   "path": "wiki/sources/src-kickoff.md",
+   "baseHash": null,
+   "content": "---\nid: src-kickoff\ntype: source\ntitle: 킥오프.pptx\nsummary: 2026년 하반기 협력사 선정 관련 킥오프 자료.\naliases: []\ntags: []\nclaims: []\nopen_questions: []\nderived_from: null\ngenerated_by: claude-code\nupdated: 2026-09-05T00:00:00.000Z\nupdated_by: app\n---\n# 킥오프.pptx\n"
+  }
+ ]
+}

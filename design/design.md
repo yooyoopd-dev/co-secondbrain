@@ -1,53 +1,73 @@
 ---
 version: "alpha"
-name: "Inter Typography"
-description: "Render a 2D isolated text on a solid background. Ideal for apps, dashboards, documentation, digital product needing maximum clarity.. AI-ready template."
+name: "Lovable Cream Humanist"
+description: "Lovable-inspired warm landing page. Ideal for ai builders, ferramentas no-code, plataformas amigáveis, dev tools approachable. AI-ready template."
 colors:
-  primary: "#FFFFFF"
-  secondary: "#000000"
+  primary: "#f7f4ed"
+  secondary: "#1c1c1c"
+  tertiary: "#fcfbf8"
+  neutral: "#eceae4"
+  surface: "#5f5f5d"
+  accent: "#3b82f6"
 typography:
   h1:
-    fontFamily: Inter
-    fontSize: 2.5rem
+    fontFamily: system-ui
+    fontSize: 2.25rem
     fontWeight: 700
   body-md:
-    fontFamily: Inter
+    fontFamily: system-ui
     fontSize: 1rem
     fontWeight: 400
+  label-caps:
+    fontFamily: system-ui
+    fontSize: 0.75rem
+    fontWeight: 500
+rounded:
+  sm: 6px
+  md: 12px
+  lg: 18px
 components:
   button-primary:
     backgroundColor: "{colors.primary}"
+    textColor: "{colors.neutral}"
+    rounded: "{rounded.sm}"
     padding: 12px
 ---
 
 ## Overview
 
-Render a 2D isolated text on a solid background. Ideal for apps, dashboards, documentation, digital product needing maximum clarity.. AI-ready template. Inter started as a side project by Rasmus Andersson while he was at Figma — a typeface designed explicitly for computer screens. Not print adapted for digital. Not a geometric exercise. A workhorse built from pixel-level constraints upward. The tall x-height, open apertures, and tabular number sets weren't aesthetic choices — they were functional ones. Every decision optimized for legibility at small sizes on low-density displays.
+Lovable-inspired warm landing page. Ideal for ai builders, ferramentas no-code, plataformas amigáveis, dev tools approachable. AI-ready template. The cream humanist aesthetic didn't emerge from a single moment — it's the quiet rebellion against the cold, clinical interfaces that dominated the 2010s. When every SaaS product looked like a sterile hospital dashboard, designers started reaching back to print traditions: warm off-whites, humanist typefaces with visible pen strokes, and generous whitespace that actually breathes.
 
-Then something happened. Figma shipped Inter as its default. Vercel adopted it. Next.js made it a one-line import. Suddenly Inter wasn't just a good UI font — it was THE UI font. The new Helvetica of interfaces. You see it on every SaaS landing page, every developer tool, every startup that hasn't thought about typography yet.
+The lineage traces through early Mailchimp (before the rebrand flattened it), the original Slack palette, and indie apps like Notion in its softer early days. These products understood something fundamental: people don't want to feel like they're operating machinery. They want to feel like they're using something made by humans, for humans. The cream background isn't just an aesthetic choice — it reduces eye strain and signals 'this space is yours, relax.'
 
-Is that a problem? Honestly, not really. Inter is genuinely excellent at what it does. The issue isn't the typeface — it's the laziness of reaching for it without considering alternatives. When everything looks the same, nothing has personality. Inter gives you a perfect neutral baseline. Whether you stay there is a design decision, not a default.
+What makes this system distinct from generic 'friendly UI' is its restraint. It's not playful to the point of being unserious. The warmth comes from typography and color temperature, not from illustrations of people high-fiving. It earns trust through craft, not performance.
 
-- Density: 8/10 — Dense
+- Density: 5/10 — Balanced
 - Variance: 4/10 — Moderate
 - Motion: 4/10 — Subtle
 
-- **Style:** System, product and UI workhorse
-- **Keywords:** Inter, neutral, readable, UI, apps, dashboards, huge weight range
-- **Era:** Contemporary Web
-- **Light/Dark:** ✗ No / ✓ Full
+- **Style:** Warm Cream, Humanist Font, Opacity-Driven Colors, Inset Shadows, Pill Icons
+- **Keywords:** lovable, cream, humanist, opacity-driven, inset shadows, pill icons, warm borders, Camera Plain, shadcn, approachable
+- **Era:** 2024-2026 Approachable Dev Tool
+- **Light/Dark:** ✓ Full / ✗ Not Recommended
 
 ## Colors
 
-- **#FFFFFF** (#FFFFFF) — Primary surface or dominant color
-- **#000000** (#000000) — Extended palette, decorative use
+- **Creme** (#f7f4ed) — Primary surface or dominant color
+- **Charcoal** (#1c1c1c) — Dark surface, primary background
+- **Off-White** (#fcfbf8) — Light surface, card backgrounds
+- **Borda Creme** (#eceae4) — Supporting palette color
+- **Cinza Muted** (#5f5f5d) — Secondary text, borders, muted elements
+- **Ring Blue** (#3b82f6) — Secondary accent
+- **Borda Interativa** (rgba(28,28,28,0.4)) — Extended palette, decorative use
+- **Tint** (rgba(28,28,28,0.04)) — Extended palette, decorative use
 
 
 ## Typography
 
-- **Display / Hero:** Inter — Weight 700, tight tracking, used for headline impact
-- **Body:** Inter — Weight 400, 16px/1.6 line-height, max 72ch per line
-- **UI Labels / Captions:** Inter — 0.875rem, weight 500, slight letter-spacing
+- **Display / Hero:** system-ui — Weight 700, tight tracking, used for headline impact
+- **Body:** system-ui — Weight 400, 16px/1.6 line-height, max 72ch per line
+- **UI Labels / Captions:** system-ui — 0.875rem, weight 500, slight letter-spacing
 - **Monospace:** JetBrains Mono — Used for code, metadata, and technical values
 
 Scale:
@@ -71,7 +91,7 @@ Scale:
 
 ## Elevation & Depth
 
-Tight tracking (-6%), 90% leading
+Canvas creme quente (#f7f4ed) como caderno premium. Font humanista com terminais arredondados e curvas orgânicas. Sistema de cores baseado em opacidade — todos os cinzas derivados de #1c1c1c em transparências variadas. Inset shadows em botões (rgba(255,255,255,0.2) 0px 0.5px inset + rgba(0,0,0,0.2) 0px 0px 0.5px inset). Bordas quentes (#eceae4). Pill icons (9999px). Variable font com peso 480 intermediário.
 
 - **Physics:** Ease-out curves, 200-300ms duration. Smooth and predictable.
 - **Entry animations:** Fade + translate-Y (16px → 0) over 420ms ease-out. Staggered cascades for lists: 80ms between items.
@@ -82,14 +102,14 @@ Tight tracking (-6%), 90% leading
 
 ## Shapes
 
-Base corner radius: 8px. See rounded tokens in front matter for the full scale.
+Base corner radius: 6px. See rounded tokens in front matter for the full scale.
 
 
 ## Components
 
-- **Primary Button:** Subtly rounded (0.5rem) shape. Accent color fill. Hover: 8% darken + subtle lift shadow. Active: -1px translate tactile press. Font weight 600. No outer glows.
+- **Primary Button:** Pill-shaped (9999px) shape. Accent color fill. Hover: 8% darken + subtle lift shadow. Active: -1px translate tactile press. Font weight 600. No outer glows.
 - **Secondary / Ghost Button:** Outline variant. 1.5px border in muted color. Text in primary color. Hover: subtle background fill.
-- **Cards:** Subtly rounded (0.5rem) corners. Surface background. Subtle shadow (0 2px 12px rgba(0,0,0,0.06)). 1px border stroke.
+- **Cards:** Pill-shaped (9999px) corners. Surface background. Subtle shadow (0 2px 12px rgba(0,0,0,0.06)). 1px border stroke.
 - **Inputs:** Label above input. 1px border stroke. Focus ring: 2px accent color offset 2px. Error text below in semantic red. No floating labels.
 - **Navigation:** Primary surface background. Active item: accent color indicator. Font weight 500 when active.
 - **Skeletons:** Shimmer animation matching component dimensions. No circular spinners.
@@ -107,14 +127,18 @@ Base corner radius: 8px. See rounded tokens in front matter for the full scale.
 - No broken external image links — use picsum.photos or inline SVG
 - No generic lorem ipsum in demos
 
-- Do Inter Font
-- Do Color: #FFFFFF
-- Do Tracking -6%
-- Do Background #000000
+- Do Fundo creme #f7f4ed
+- Do Font humanista
+- Do Cores baseadas em opacidade
+- Do Inset shadows em botões
+- Do Bordas quentes
+- Do Pill icons 9999px
+- Do Variable font weight 480
+- Do Responsivo
 
 
 ## Use Case
 
-Apps, Dashboards, documentation, digital product needing maximum clarity.
+AI builders, Tools no-code, Platforms amigáveis, Dev tools approachable
 
-<!-- Source: https://designmd.app/library/inter-typography · designmd.app -->
+<!-- Source: https://designmd.app/library/lovable-cream-humanist · designmd.app -->

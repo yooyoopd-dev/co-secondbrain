@@ -1,0 +1,11 @@
+{
+ "summary": "베타테크 납품 기한 정보 생성",
+ "ops": [
+  {
+   "op": "create",
+   "path": "wiki/entities/ent-betatech.md",
+   "baseHash": null,
+   "content": "---\nid: ent-betatech\ntype: entity\ntitle: 베타테크\nsummary: 납품을 수행하는 계약 당사자.\naliases: []\ntags: []\nclaims:\n  - text: 베타테크는 2026-11-30 까지 납품을 완료한다.\n    source: src-contract#page-2\n    confidence: EXTRACTED\nopen_questions: []\nderived_from: null\ngenerated_by: claude-code\nupdated: 2026-09-05T00:00:00.000Z\nupdated_by: app\n---\n# 베타테크\n\n베타테크는 2026-11-30 까지 납품을 완료한다.[^src-contract#page-2]"
+  }
+ ]
+}

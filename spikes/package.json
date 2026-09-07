@@ -1,0 +1,26 @@
+{
+  "name": "co-secondbrain-spikes",
+  "private": true,
+  "type": "module",
+  "description": "M0 스파이크 — 추측 대신 실측",
+  "scripts": {
+    "fixtures": "node fixtures/make.mjs",
+    "extract": "node extract/run.mjs",
+    "similarity": "node similarity/run.mjs",
+    "graph": "node graph/run.mjs",
+    "sizing": "node sizing/run.mjs"
+  },
+  "dependencies": {
+    "@kenjiuno/msgreader": "^1.28.0",
+    "docx": "^9.7.1",
+    "exceljs": "^4.4.0",
+    "fast-xml-parser": "^5.11.1",
+    "graphology": "^0.26.0",
+    "graphology-communities-louvain": "^2.0.2",
+    "jszip": "^3.10.1",
+    "mailparser": "^3.9.20",
+    "mammoth": "^1.12.2",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.3.289"
+  }
+}
