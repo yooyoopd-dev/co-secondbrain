@@ -208,10 +208,11 @@ npm config set cafile C:\path\to\사내-CA.pem
 
 | 대상 | 명령 | 푸는 것 |
 |---|---|---|
-| Codex CLI | `npm i -g @openai/codex` | **W3b · ROADMAP 19** |
-| playwright | `npm i -g playwright` | `npm run smoke:win` |
+| 앱 의존성 | `cd app; npm ci` | **17 · 18 자가검사 실행** |
 | 스파이크 의존성 | `cd spikes; npm install` | 시험용 원본 생성 |
-| 앱 의존성 | `cd app; npm ci` | 17 · 18 자가검사 실행 |
+| playwright | `npm i -g playwright` | `npm run smoke:win` |
+
+Codex 는 여기 없습니다. 19번과 W3b 는 보류입니다.
 
 ### 안 깔아도 되는 것
 
@@ -220,16 +221,8 @@ npm config set cafile C:\path\to\사내-CA.pem
 
 ### 설치와 실행은 다릅니다
 
-레지스트리가 열렸다고 **실행 때 밖으로 나가는 길이 열린 것은 아닙니다.** Codex 는
-`api.openai.com` 에 붙어야 돕니다. 깔고 나서 한 번 돌려 봐야 압니다.
-
-```powershell
-codex --version
-node spikes\cli\record.mjs --only codex --n 1
-```
-
-`무응답` 이 뜨면 `spikes\fixtures\cli\codex-kickoff.stderr.txt` 에 사유가 있습니다.
-그 파일에는 합성 입력만 들어 있어 반출해도 됩니다.
+레지스트리가 열렸다고 **실행 때 밖으로 나가는 길이 열린 것은 아닙니다.** 깔고 나서 한 번
+돌려 봐야 압니다.
 
 ## W2 · W3 · W3b — 회수 스크립트 `record.mjs`
 
