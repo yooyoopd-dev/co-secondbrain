@@ -363,6 +363,19 @@ sudo ufw status
 
 ## 9. 첫 공간과 토큰
 
+**공간 id 는 Vault 의 `id` 와 글자까지 같아야 합니다.** 앱은 Vault 의
+`.sb/config.json` 에 적힌 `id` 를 그대로 공간 id 로 씁니다 (`core/sync/engine.ts`).
+아래에서 공간을 `ACME` 로 만들었으면 붙일 Vault 도 `id` 가 `ACME` 여야 합니다.
+다르면 붙기는 붙는데 동기화가 404 로 떨어집니다.
+
+```bash
+# 윈도우 PC 에서, 붙일 Vault 폴더에서
+type .sb\config.json
+```
+
+`id` 는 Vault 를 만들 때 정해집니다. 이미 다른 이름으로 만들었으면 그 이름으로 공간을
+만드는 쪽이 빠릅니다. `id` 가 `personal` 인 Vault 는 아예 허브에 안 붙습니다.
+
 관리 API 는 `X-Admin-Key` 로만 열립니다.
 
 ```bash
@@ -383,7 +396,16 @@ curl -XPOST -H "X-Admin-Key: $KEY" -d '{"userId":"hong@corp"}' \
 마지막 응답의 `token` 이 **평문으로 보이는 유일한 순간**입니다. 서버는 sha256 해시만
 갖고 있어 다시 볼 수 없습니다. 잃어버리면 새로 발급합니다.
 
-그 값을 받은 사용자는 앱의 **[설정] → 허브 연결** 에서 URL 과 함께
+받은 토큰이 실제로 그 공간을 여는지 여기서 한 번 봅니다.
+
+```bash
+TOKEN=<위에서 받은 토큰>
+curl -H "Authorization: Bearer $TOKEN" $HUB/v1/spaces
+```
+
+목록에 `ACME` 가 있어야 합니다. 비어 있으면 `members` 를 안 넣었거나 `userId` 가 다릅니다.
+
+그 값을 받은 사용자는 앱의 **[설정] → [허브 연결]** 에서 URL 과 함께
 넣습니다. 토큰은 Windows 자격 증명 저장소에 암호문으로 들어가고 Vault 폴더에는 안
 씁니다.
 
