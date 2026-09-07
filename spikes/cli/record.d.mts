@@ -23,5 +23,16 @@ export declare const PAGE_TEMPLATE: string;
 export declare const CONVENTION: string;
 export declare const CASES: RecordCase[];
 export declare function promptFor(c: RecordCase, withSchema: boolean): string;
+export declare function unwrapGemini(out: string): string;
+
+export interface RecordCli {
+  id: string;
+  bin: string;
+  conventionFile: string;
+  schemaInPrompt: boolean;
+  args: (workdir: string) => string[];
+  verified: boolean;
+}
+export declare const CLIS: RecordCli[];
 export declare function stripFence(s: string): string;
 export declare function check(cs: unknown, c: RecordCase): CheckResult;

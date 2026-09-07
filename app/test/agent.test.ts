@@ -407,7 +407,25 @@ test('스탬프 — 녹화된 Gemini 응답의 claude-code 표기가 고쳐진�
 
 /* ================= Gemini B등급 어댑터 (ROADMAP 3번) ================= */
 
-import { createGemini, extract, retryPrompt, validateChangeSet, withSchema, stripFence as gStripFence } from '../src/core/agent/gemini.ts';
+import {
+  buildArgv as gBuildArgv,
+  createGemini,
+  extract,
+  parseEnvelope,
+  retryPrompt,
+  stripFence as gStripFence,
+  usageFromStats,
+  validateChangeSet,
+  withSchema,
+} from '../src/core/agent/gemini.ts';
+
+/** 사내 실측 봉투와 같은 모양 (ROADMAP.md §10.3) */
+const envelope = (text: string, tokens?: Record<string, number>) =>
+  JSON.stringify({
+    session_id: 'f0f0',
+    response: text,
+    stats: { models: { 'gemini-3.1-pro-preview': { api: { totalRequests: 1 }, tokens: tokens ?? { input: 9178, prompt: 9178, candidates: 2, total: 9361, cached: 0 } } } },
+  });
 
 const OK_CS = JSON.stringify({ summary: 's', ops: [{ op: 'create', path: '02_NOTES/entities/a.md', baseHash: null, content: PAGE }] });
 
@@ -451,12 +469,14 @@ test('B등급 — 스키마는 프롬프트 뒤에 붙는다 (앞에 두면 캐�
 /** 호출마다 다른 응답을 주고 넘겨받은 stdin 을 기록한다. */
 function geminiExec(outs: string[]) {
   const stdins: (string | undefined)[] = [];
+  const argvs: readonly string[][] = [];
   let i = 0;
-  const exec: Exec = async (_b, _a, o) => {
+  const exec: Exec = async (_b, a, o) => {
     stdins.push(o.stdin);
-    return { stdout: outs[Math.min(i++, outs.length - 1)] ?? '', stderr: '', code: 0 };
+    (argvs as string[][]).push([...a]);
+    return { stdout: envelope(outs[Math.min(i++, outs.length - 1)] ?? ''), stderr: '', code: 0 };
   };
-  return { exec, stdins };
+  return { exec, stdins, argvs };
 }
 
 const gJob = { workdir: '/tmp/wd', prompt: '원본 내용' };
@@ -500,11 +520,71 @@ test('B등급 — 출력이 없으면 실패다. 재요청하지 않는다', asy
   assert.equal(stdins.length, 1);
 });
 
-test('B등급 — 비용을 보고하지 않는다. 지출 계량기가 Gemini 를 못 센다', async () => {
+/* ---------------- `-o json` 봉투 (ROADMAP 27번) ---------------- */
+
+test('B등급 — 봉투로 받는다. 그래야 토큰이 온다', () => {
+  assert.deepEqual(gBuildArgv(), ['--skip-trust', '--approval-mode', 'plan', '-o', 'json']);
+});
+
+test('B등급 — 봉투에서 본문과 토큰을 꺼낸다', () => {
+  const e = parseEnvelope(envelope('본문'));
+  assert.equal(e.text, '본문');
+  assert.equal(e.error, null);
+  assert.equal(e.usage.inputTokens, 9178);
+  // 낸 토큰은 total - prompt 다. candidates 만 더하면 모자란다 (9178 + 2 < 9361)
+  assert.equal(e.usage.outputTokens, 183);
+});
+
+test('B등급 — 오류 봉투는 stderr 로 온다. stdout 만 보면 사유를 놓친다', () => {
+  const err = JSON.stringify({ session_id: 'x', error: { type: 'Error', message: '인증이 없습니다', code: 41 } });
+  const e = parseEnvelope('', err);
+  assert.equal(e.text, '');
+  assert.match(e.error ?? '', /인증이 없습니다.*code=41/);
+});
+
+test('B등급 — 봉투가 아니면 평문으로 본다. 옛 녹화본과 판 변경을 같이 받는다', () => {
+  // **모델이 낸 ChangeSet 도 JSON 객체다.** "JSON 이면 봉투"로 가르면 본문이 통째로 빈다.
+  const e = parseEnvelope(OK_CS);
+  assert.equal(e.text, OK_CS);
+  assert.deepEqual(e.usage, ZERO_USAGE);
+  assert.equal(parseEnvelope('```json\n' + OK_CS + '\n```').text.includes('summary'), true);
+});
+
+test('B등급 — 모델이 여럿이면 더한다', () => {
+  const two = JSON.stringify({
+    response: '.',
+    stats: { models: { a: { tokens: { prompt: 100, total: 150 } }, b: { tokens: { prompt: 10, total: 12 } } } },
+  });
+  const u = usageFromStats(JSON.parse(two));
+  assert.equal(u.inputTokens, 110);
+  assert.equal(u.outputTokens, 52);
+});
+
+test('B등급 — 금액은 0 이다. 사내 단가를 몰라서 지어내지 않는다', async () => {
   const { exec } = geminiExec([OK_CS]);
   const r = await createGemini(exec).run({ ...gJob, validate: validateChangeSet }, CHANGESET_SCHEMA);
-  assert.deepEqual(r.usage, ZERO_USAGE);
-  assert.equal(r.sessionId, null); // 세션 재개 경로가 없다
+  assert.equal(r.usage.costUsd, 0);
+  assert.equal(r.usage.inputTokens, 9178, '토큰은 센다');
+  assert.equal(r.sessionId, null); // buildArgv 가 --resume 을 안 붙인다
+});
+
+test('B등급 — 재요청분 토큰도 더한다. 빼면 계량기가 적게 센다', async () => {
+  const { exec } = geminiExec(['그냥 말', OK_CS]);
+  const r = await createGemini(exec).run({ ...gJob, validate: validateChangeSet }, CHANGESET_SCHEMA);
+  assert.equal(r.ok, true, r.error);
+  assert.equal(r.usage.inputTokens, 9178 * 2);
+});
+
+test('B등급 — 거절당하면 사유를 그대로 전한다. 재요청하지 않는다', async () => {
+  const stdins: (string | undefined)[] = [];
+  const exec: Exec = async (_b, _a, o) => {
+    stdins.push(o.stdin);
+    return { stdout: '', stderr: JSON.stringify({ error: { message: '쿼터를 다 썼습니다', code: 41 } }), code: 41 };
+  };
+  const r = await createGemini(exec).run({ ...gJob, validate: validateChangeSet }, CHANGESET_SCHEMA);
+  assert.equal(r.ok, false);
+  assert.equal(stdins.length, 1, '거절에 재요청하면 쿼터만 더 태운다');
+  assert.match(r.error ?? '', /쿼터를 다 썼습니다/);
 });
 
 test('규약 파일 이름이 CLI 마다 다르다 (PLAN.md §7.3)', () => {

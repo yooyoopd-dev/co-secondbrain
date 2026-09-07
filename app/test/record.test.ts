@@ -3,12 +3,26 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 // 사내 PC 에서 도는 회수 스크립트. 의존성이 없어야 해서 app 코드를 import 하지 못한다.
 // 그래서 값이 복사돼 있고, 어긋나면 여기서 잡는다.
-import { CASES, CONVENTION, PAGE_TEMPLATE, SCHEMA, check, promptFor, stripFence } from '../../spikes/cli/record.mjs';
+import { CASES, CLIS, CONVENTION, PAGE_TEMPLATE, SCHEMA, check, promptFor, stripFence, unwrapGemini } from '../../spikes/cli/record.mjs';
 import { CHANGESET_SCHEMA } from '../src/core/agent/schema.ts';
+import { buildArgv as gBuildArgv } from '../src/core/agent/gemini.ts';
 import { PAGE_TEMPLATE as APP_TEMPLATE } from '../src/core/agent/ingest.ts';
 
 test('회수 스크립트의 스키마가 app 의 것과 같다', () => {
   assert.deepEqual(SCHEMA, JSON.parse(JSON.stringify(CHANGESET_SCHEMA)));
+});
+
+test('회수 스크립트가 앱과 같은 인자로 gemini 를 부른다', () => {
+  // 어긋나면 회수본이 앱 경로의 증거가 아니게 된다. 실제로 어긋난 적이 있다 —
+  // 스파이크만 프롬프트를 argv 로 넘겨서 사내 왕복 한 번을 버렸다 (ROADMAP.md §8.4).
+  assert.deepEqual(CLIS.find((c) => c.id === 'gemini')!.args('/tmp/wd'), gBuildArgv());
+});
+
+test('봉투는 열고 벌거벗은 ChangeSet 은 그대로 둔다', () => {
+  const bare = JSON.stringify({ summary: 's', ops: [] });
+  assert.equal(unwrapGemini(bare), bare);
+  assert.equal(unwrapGemini(JSON.stringify({ session_id: 'x', response: bare })), bare);
+  assert.throws(() => unwrapGemini(JSON.stringify({ error: { message: '쿼터', code: 41 } })), /쿼터/);
 });
 
 test('회수 스크립트의 페이지 표본이 app 의 것과 같다', () => {
@@ -111,7 +125,8 @@ import { validateAnchors, validateShape, type ChangeSet } from '../src/core/chan
 /** record.mjs 의 검사는 의존성 0 이라 가볍다. 여기서 app 의 관문으로 다시 본다. */
 const RECORDED: { file: string; caseId: string; extract: (s: string) => unknown }[] = [
   ...CASES.map((c) => ({ file: `claude-code-${c.id}.txt`, caseId: c.id, extract: (s: string) => JSON.parse(s).structured_output })),
-  ...CASES.map((c) => ({ file: `gemini-${c.id}.txt`, caseId: c.id, extract: (s: string) => JSON.parse(stripFence(s)) })),
+  // 옛 녹화본은 평문이고 새 녹화본은 `-o json` 봉투다. 같은 검사가 둘 다 읽어야 한다.
+  ...CASES.map((c) => ({ file: `gemini-${c.id}.txt`, caseId: c.id, extract: (s: string) => JSON.parse(stripFence(unwrapGemini(s))) })),
 ];
 
 /**

@@ -122,6 +122,26 @@ ${anchors.join(' · ')}
 const PATH_RE = /^02_NOTES\/(overview\.md|(sources|entities|concepts|synthesis)\/[a-z0-9가-힣-]+\.md)$/;
 const CITE_RE = /\[\^([a-z0-9가-힣-]+)#([^\]]+)\](?!:)/gi;
 
+/**
+ * `-o json` 봉투에서 본문을 꺼낸다. 봉투가 아니면 그대로 돌려준다 — 옛 경로로 녹화한
+ * 파일과 새 파일을 같은 검사가 읽어야 한다.
+ *
+ * **"JSON 이면 봉투"로 보면 안 된다.** 모델이 낸 ChangeSet 자체가 JSON 객체라 그것을
+ * 봉투로 읽으면 본문이 통째로 빈다. `app/src/core/agent/gemini.ts` 와 같은 규칙이다.
+ */
+export function unwrapGemini(out) {
+  let j;
+  try {
+    j = JSON.parse(out.trim());
+  } catch {
+    return out;
+  }
+  if (j === null || typeof j !== 'object' || Array.isArray(j)) return out;
+  if (!['response', 'error', 'stats', 'session_id'].some((k) => k in j)) return out;
+  if (j.error) throw new Error(`${j.error.message ?? '알 수 없는 오류'} (code=${j.error.code ?? '?'})`);
+  return j.response ?? '';
+}
+
 export function stripFence(s) {
   const m = s.match(/```(?:json)?\s*([\s\S]*?)```/);
   return (m ? m[1] : s).trim();
@@ -174,7 +194,7 @@ export function check(cs, c) {
 
 const BLOCKED = ['Read', 'Write', 'Edit', 'NotebookEdit', 'Bash', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'Task', 'TodoWrite'];
 
-const CLIS = [
+export const CLIS = [
   {
     id: 'claude-code',
     bin: 'claude',
@@ -191,8 +211,10 @@ const CLIS = [
     bin: 'gemini',
     conventionFile: 'GEMINI.md',
     schemaInPrompt: true, // B등급 — CLI 가 스키마를 강제하지 못한다
-    args: () => ['--skip-trust', '--approval-mode', 'plan'],
-    extract: (out) => JSON.parse(stripFence(out)),
+    // `-o json` 봉투로 받는다. 토큰이 여기 실려 온다 (ROADMAP.md §10.3).
+    // **앱 어댑터와 같은 인자여야 이 회수가 앱 경로의 증거가 된다.**
+    args: () => ['--skip-trust', '--approval-mode', 'plan', '-o', 'json'],
+    extract: (out) => JSON.parse(stripFence(unwrapGemini(out))),
     verified: true,
   },
   {
