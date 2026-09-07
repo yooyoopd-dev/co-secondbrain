@@ -214,6 +214,13 @@ Jaro-Winkler 임계는 0.92에서 0.96으로 올려야 합니다.
 (n=10 · 전부 0%)는 Gemini의 성적을 잰 것이 아닙니다. W3의 표본은 여전히 3입니다
 ([`docs/ROADMAP.md`](docs/ROADMAP.md) §8).
 
+고친 뒤 다시 돌리니 **Gemini(`@google/gemini-cli@0.58.0`)가 회수 스크립트 세 사례를 전부
+통과**했습니다. 다만 W3 수치는 그대로 0%였습니다. 이번에는 프롬프트를 넘기는 자리가
+막았습니다. 그 스크립트만 `-p`로 argv에 실었습니다. npm 전역 gemini는 `gemini.cmd`라 cmd.exe를 거칩니다. 줄바꿈이 든
+인자는 거기서 통째로 깨집니다. 프롬프트를 stdin으로 옮겼습니다. 회수 3줄에 `무응답` 칸도
+넣었습니다 — **안 뜬 것과 못 맞춘 것을 안 나눠서 왕복을 두 번 버렸습니다.**
+W3의 표본은 아직 3입니다.
+
 ### 받아 쓰는 법
 
 [릴리스](https://github.com/yooyoopd-dev/co-secondbrain/releases/latest)에서

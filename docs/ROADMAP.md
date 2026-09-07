@@ -198,7 +198,7 @@ Gemini 로 돌려 봐야 `generated_by` 결함이 드러나기 때문이다.
 | 형식 | fenced 0% · 파싱 실패 10 |
 | 앵커 위반 | 없음 |
 | `record.mjs` — claude-code 2.1.260 | 3사례 전부 PASS |
-| `record.mjs` — gemini | 3사례 전부 무응답 · `spawn C:\Users\...\AppData\Roaming\npm\gemini ENOENT` |
+| `record.mjs` — gemini (`@google/gemini-cli@0.58.0`) | 3사례 전부 무응답 · `spawn C:\Users\...\AppData\Roaming\npm\gemini ENOENT` |
 | `record.mjs` — codex | 미설치, 건너뜀 |
 
 ### 8.1 0% 는 Gemini 가 못 맞춘 것이 아니다
@@ -234,3 +234,45 @@ claude-code 가 통과한 것은 `where claude` 의 첫 실행 후보가 띄울 
 - `node spikes/cli/record.mjs --only gemini` — 이번 수정으로 Gemini 가 뜨는지
 - 뜨면 `node spikes/cli/gemini-schema-check.mjs 10` — W3 를 n=10 으로 다시
 - `where claude` 와 `where gemini` 의 출력 그대로 (경로는 사용자명을 지우고)
+
+### 8.4 2회차 — Gemini 는 떴다. W3 는 또 못 쟀다
+
+같은 날 수정본으로 다시 돌렸다.
+
+| 회수한 것 | 값 |
+|---|---|
+| `record.mjs --only gemini` | **3사례 전부 PASS** |
+| W3 | n=10 · json 0% · schema 0% · anchor 0% · fenced 0% · 파싱 실패 10 |
+| 설치 | `C:\Users\...\AppData\Roaming\npm` · `@google/gemini-cli@0.58.0` |
+
+**해석이 갈린다.** `record.mjs` 가 통과했으므로 Gemini 는 뜬다. 실행 파일 고르기는
+고쳐졌다. 그런데 `gemini-schema-check.mjs` 는 그대로 0% 다. 두 스크립트가 다른 것은
+프롬프트를 넘기는 자리 하나뿐이다.
+
+| | 인자 | 프롬프트 |
+|---|---|---|
+| `record.mjs` | `--skip-trust --approval-mode plan` | **stdin** |
+| `gemini-schema-check.mjs` (2회차까지) | `--skip-trust -y -p <프롬프트>` | **argv** |
+
+npm 전역 gemini 는 `gemini.cmd` 라 cmd.exe 를 거친다. 이 프롬프트에는 줄바꿈과
+따옴표·백틱이 들어 있어 명령줄에서 통째로 깨진다. **cmd.exe 는 줄바꿈이 든 인자를
+아예 못 받는다.** `exec.ts` 머리말이 2026-09-05 에 적어 둔 바로 그 이유인데
+(프롬프트는 stdin 으로 넘긴다) 이 스파이크만 옛 방식으로 남아 있었다.
+
+프롬프트를 stdin 으로 옮기고 인자를 `record.mjs` 와 같은 조합으로 맞췄다.
+
+### 8.5 무응답을 파싱 실패로 세지 않는다
+
+같은 0% 를 두 번 받고서야 알았다. 회수 3줄에 **안 뜬 것과 못 맞춘 것을 가르는 칸이
+없었다.** 이제 2번 줄에 `무응답` 이 붙는다. 첫 회부터 비면 stderr 를 찍고 종료 코드 2 로
+끊는다. 열 번을 더 기다릴 이유가 없다.
+
+  2 형식 fenced=0% 파싱실패=0 무응답=10
+
+이 줄이 1회차에 있었으면 왕복 한 번을 아꼈다.
+
+### 8.6 아직 모르는 것
+
+- **W3 는 여전히 n=3 이다.** 3회차가 필요하다
+- `where claude` 의 출력을 아직 못 받았다. claude-code 가 어떤 확장자로 뜨는지 모른다
+- Codex 는 사내 PC 에 미설치다. 19번은 그대로 막혀 있다

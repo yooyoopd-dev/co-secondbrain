@@ -7,16 +7,14 @@
 // 실행: node gemini-schema-check.mjs [횟수]
 // 전제: Gemini 인증이 끝난 PC (GEMINI_API_KEY 또는 gemini 로그인)
 //
-// 출력은 손으로 옮겨 적을 수 있게 3줄이다.
+// 출력은 손으로 옮겨 적을 수 있게 3줄이다. **무응답 칸이 0 이 아니면 그 회차는 표본이
+// 아니다** — 모델이 못 맞춘 것이 아니라 CLI 가 안 뜬 것이다.
 
-import { execFile, spawnSync } from 'node:child_process';
-import { promisify } from 'node:util';
-const run = promisify(execFile);
+import { spawn, spawnSync } from 'node:child_process';
 
 // Windows 에서 실행 파일 자리를 먼저 찾는다. npm 전역 설치는 `gemini` · `gemini.cmd` ·
 // `gemini.ps1` 을 같이 깔고 `where` 는 확장자 없는 sh 껍데기를 먼저 준다. 그대로 띄우면
-// `spawn ... ENOENT` 로 죽는데 아래 try/catch 가 그걸 빈 응답으로 삼켜서 **파싱 실패로
-// 잡힌다.** 2026-09-07 사내 PC 에서 10/10 이 그렇게 나왔다. 0% 는 Gemini 의 성적이 아니었다.
+// `spawn ... ENOENT` 로 죽는다. 2026-09-07 사내 PC 1회차가 그것 때문에 전부 넘어졌다.
 const BIN = (() => {
   if (process.platform !== 'win32') return { path: 'gemini', shell: false };
   const out = spawnSync('where', ['gemini'], { encoding: 'utf8' }).stdout ?? '';
@@ -28,6 +26,47 @@ const BIN = (() => {
   }
   return { path: pick, shell: /\.(cmd|bat)$/i.test(pick) };
 })();
+
+/**
+ * 프롬프트를 **stdin 으로** 넘긴다. `-p <프롬프트>` 로 argv 에 실으면 안 된다 —
+ * npm 전역 gemini 는 `gemini.cmd` 라 cmd.exe 를 거치는데, 이 프롬프트는 줄바꿈과
+ * 따옴표·백틱을 담고 있어 명령줄에서 통째로 깨진다. 2026-09-07 사내 PC 2회차에서
+ * 이것 때문에 10/10 이 다시 파싱 실패로 나왔다 (ROADMAP §8.4).
+ *
+ * 인자는 `record.mjs` 가 3/3 통과한 것과 같은 조합을 쓴다.
+ */
+function run(prompt) {
+  return new Promise((resolve) => {
+    const p = spawn(BIN.path, ['--skip-trust', '--approval-mode', 'plan'], {
+      shell: BIN.shell,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ stdout, stderr });
+    };
+    const timer = setTimeout(() => {
+      p.kill('SIGKILL');
+      stderr += '\n180초 안에 응답이 없어 포기했습니다';
+      done();
+    }, 180_000);
+    p.stdout.on('data', (c) => (stdout += c));
+    p.stderr.on('data', (c) => (stderr += c));
+    p.on('error', (e) => {
+      stderr += `\n${e.message}`;
+      done();
+    });
+    p.on('close', done);
+    p.stdin.on('error', () => {});
+    p.stdin.write(prompt);
+    p.stdin.end();
+  });
+}
 
 const N = Number(process.argv[2] ?? 10);
 
@@ -96,23 +135,26 @@ function validate(v) {
   return errs;
 }
 
-const tally = { json: 0, schema: 0, anchor: 0, fenced: 0, fail: 0 };
+const tally = { json: 0, schema: 0, anchor: 0, fenced: 0, fail: 0, empty: 0 };
 const pathFails = [];
 
 for (let i = 0; i < N; i++) {
-  let out = '';
-  try {
-    const r = await run(BIN.path, ['--skip-trust', '-y', '-p', PROMPT], {
-      maxBuffer: 8 << 20,
-      timeout: 180_000,
-      shell: BIN.shell,
-    });
-    out = r.stdout;
-  } catch (e) {
-    out = (e.stdout ?? '') + (e.stderr ?? '');
+  const r = await run(PROMPT);
+
+  // **안 뜬 것과 못 맞춘 것을 구분한다.** 이걸 안 나눠서 사내 왕복을 두 번 버렸다.
+  // 무응답을 파싱 실패로 세면 0% 가 모델 성적처럼 보인다 (ROADMAP §8).
+  if (!r.stdout.trim()) {
+    tally.empty++;
+    if (i === 0) {
+      console.error('gemini 가 아무것도 내지 않았습니다. 모델 성적이 아니라 실행 문제입니다.');
+      console.error(`  실행 파일: ${BIN.path}${BIN.shell ? '  [cmd 경유]' : ''}`);
+      console.error(`  stderr: ${r.stderr.trim().slice(0, 300) || '(없음)'}`);
+      process.exit(2);
+    }
+    continue;
   }
 
-  const got = extractJson(out);
+  const got = extractJson(r.stdout);
   if (got.fenced) tally.fenced++;
   if (!got.ok) {
     tally.fail++;
@@ -132,9 +174,10 @@ const pct = (n) => `${Math.round((n / N) * 100)}%`;
 console.log('');
 console.log('===== 아래 3줄만 적어 주세요 =====');
 console.log(`1 W3  n=${N} json=${pct(tally.json)} schema=${pct(tally.schema)} anchor=${pct(tally.anchor)}`);
-console.log(`2 형식 fenced=${pct(tally.fenced)} 파싱실패=${tally.fail}`);
+console.log(`2 형식 fenced=${pct(tally.fenced)} 파싱실패=${tally.fail} 무응답=${tally.empty}`);
 console.log(`3 위반 ${[...new Set(pathFails)].slice(0, 3).join(' / ') || '없음'}`);
 console.log('==================================');
 console.log('');
 console.log('json=JSON 파싱 성공률 · schema=스키마 통과율 · anchor=앵커 인용 포함률');
 console.log('schema 가 90% 미만이면 B등급 경로의 재시도 비용이 절감분을 잠식할 수 있음');
+console.log('무응답이 0 이 아니면 그 회차는 표본이 아님 — CLI 가 안 뜬 것이다');
