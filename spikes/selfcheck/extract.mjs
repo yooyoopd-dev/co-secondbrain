@@ -117,12 +117,17 @@ const classifyWarn = (w) => {
 
 const bump = (m, k) => m.set(k, (m.get(k) ?? 0) + 1);
 
+let unreadable = 0;
+
 async function walk(dir, out = []) {
   let entries;
   try {
     entries = await fs.readdir(dir, { withFileTypes: true });
   } catch {
-    return out; // 못 여는 폴더는 조용히 건너뛴다. 경로를 찍지 않는다
+    // 못 여는 폴더의 경로는 안 찍는다. 대신 **몇 개인지는 센다** — 권한 때문에 절반만
+    // 훑고서 그 수치를 전부인 줄 아는 것이 제일 나쁘다.
+    unreadable++;
+    return out;
   }
   for (const e of entries) {
     const p = path.join(dir, e.name);
@@ -145,7 +150,37 @@ const stats = (xs) => {
 
 /* ------------------------------------------------------------------ */
 
+/**
+ * 대상 폴더가 진짜 있는지 먼저 본다.
+ *
+ * **없는 경로를 조용히 0건으로 처리하면 안 된다.** 사내 회차에서 실제로 "대상 파일 0건"
+ * 짜리 빈 표만 나왔고, 그것만 보고는 경로가 틀린 것인지 폴더가 빈 것인지 알 수 없었다.
+ *
+ * PowerShell 함정 하나: `"D:\폴더\"` 처럼 역슬래시로 끝나면 따옴표가 이스케이프돼
+ * 인자가 깨진다. 끝의 역슬래시를 빼야 한다.
+ */
+const stat = await fs.stat(target).catch(() => null);
+if (stat === null) {
+  console.error(`그런 폴더가 없습니다: ${target}`);
+  console.error('');
+  console.error('PowerShell 에서 경로가 역슬래시로 끝나면 따옴표가 깨집니다.');
+  console.error('  틀림  "D:\\문서폴더\\"');
+  console.error('  맞음  "D:\\문서폴더"');
+  process.exit(2);
+}
+if (!stat.isDirectory()) {
+  console.error(`폴더가 아닙니다: ${target}`);
+  process.exit(2);
+}
+
 const files = await walk(target);
+
+if (files.length === 0) {
+  console.error(`파일이 하나도 없습니다: ${target}`);
+  if (unreadable > 0) console.error(`못 연 하위 폴더가 ${unreadable}개 있습니다. 권한을 보십시오.`);
+  else console.error('하위 폴더까지 훑었는데 비어 있습니다. 경로를 다시 보십시오.');
+  process.exit(2);
+}
 const byExt = new Map(); // ext → {총, 성공, 실패, 미지원}
 const failKinds = new Map();
 const warnKinds = new Map();
@@ -200,6 +235,7 @@ const num = (s, n) => String(s).padStart(n);
 console.log('');
 console.log('===== 아래 표만 적어 주세요 (파일명·원문 없음) =====');
 console.log(`대상 파일 ${files.length}건 · 지원 ${sum('total') - sum('skip')}건 · 성공 ${sum('ok')} · 실패 ${sum('fail')} · 미지원 ${sum('skip')}`);
+if (unreadable > 0) console.log(`못 연 하위 폴더 ${unreadable}개 — 이 수치는 전부가 아닙니다`);
 console.log('');
 console.log(`  ${pad('확장자', 10)}${num('총', 6)}${num('성공', 6)}${num('실패', 6)}${num('미지원', 8)}`);
 for (const [ext, r] of [...byExt].sort((a, b) => b[1].total - a[1].total)) {
