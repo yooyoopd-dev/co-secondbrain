@@ -208,12 +208,24 @@ const CLIS = [
   },
 ];
 
-/** 무엇을 찾았는지 보고에 남긴다. `.cmd` 면 shell 을 거쳐야 해서 인용부호 위험이 생긴다. */
+/** `.exe` 를 먼저 쓴다. cmd.exe 를 거치면 Node 가 인용부호를 다 지켜 주지 못한다. */
+const rank = (f) => (/\.(exe|com)$/i.test(f) ? 0 : 1);
+
+/**
+ * 무엇을 찾았는지 보고에 남긴다. `.cmd` 면 shell 을 거쳐야 해서 인용부호 위험이 생긴다.
+ *
+ * **확장자 없는 줄은 버린다.** npm 전역 설치는 `gemini` · `gemini.cmd` · `gemini.ps1` 을
+ * 한 폴더에 깔고 `where` 는 확장자 없는 것을 먼저 준다. 그것은 sh 스크립트라 Windows 가
+ * 못 띄운다. 2026-09-07 사내 PC 에서 이것 때문에 Gemini 가 한 번도 안 떴다.
+ */
 function resolveBin(bin) {
   const win = process.platform === 'win32';
   const r = spawnSync(win ? 'where' : 'which', [bin], { encoding: 'utf8' });
   if (r.status !== 0) return null;
-  const found = r.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0] ?? null;
+  const lines = r.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  const found = win
+    ? (lines.filter((f) => /\.(exe|com|cmd|bat)$/i.test(f)).sort((a, b) => rank(a) - rank(b))[0] ?? null)
+    : (lines[0] ?? null);
   if (!found) return null;
   const v = spawnSync(found, ['--version'], { encoding: 'utf8', shell: /\.(cmd|bat)$/i.test(found) });
   return { path: found, shell: /\.(cmd|bat)$/i.test(found), version: (v.stdout || '').trim().split(/\r?\n/)[0] ?? '' };

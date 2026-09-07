@@ -9,9 +9,25 @@
 //
 // 출력은 손으로 옮겨 적을 수 있게 3줄이다.
 
-import { execFile } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 const run = promisify(execFile);
+
+// Windows 에서 실행 파일 자리를 먼저 찾는다. npm 전역 설치는 `gemini` · `gemini.cmd` ·
+// `gemini.ps1` 을 같이 깔고 `where` 는 확장자 없는 sh 껍데기를 먼저 준다. 그대로 띄우면
+// `spawn ... ENOENT` 로 죽는데 아래 try/catch 가 그걸 빈 응답으로 삼켜서 **파싱 실패로
+// 잡힌다.** 2026-09-07 사내 PC 에서 10/10 이 그렇게 나왔다. 0% 는 Gemini 의 성적이 아니었다.
+const BIN = (() => {
+  if (process.platform !== 'win32') return { path: 'gemini', shell: false };
+  const out = spawnSync('where', ['gemini'], { encoding: 'utf8' }).stdout ?? '';
+  const found = out.split(/\r?\n/).map((s) => s.trim()).filter((s) => /\.(exe|com|cmd|bat)$/i.test(s));
+  const pick = found.find((f) => /\.(exe|com)$/i.test(f)) ?? found[0];
+  if (!pick) {
+    console.error('gemini 를 찾지 못했습니다. `where gemini` 가 무엇을 주는지 확인하십시오.');
+    process.exit(2);
+  }
+  return { path: pick, shell: /\.(cmd|bat)$/i.test(pick) };
+})();
 
 const N = Number(process.argv[2] ?? 10);
 
@@ -86,9 +102,10 @@ const pathFails = [];
 for (let i = 0; i < N; i++) {
   let out = '';
   try {
-    const r = await run('gemini', ['--skip-trust', '-y', '-p', PROMPT], {
+    const r = await run(BIN.path, ['--skip-trust', '-y', '-p', PROMPT], {
       maxBuffer: 8 << 20,
       timeout: 180_000,
+      shell: BIN.shell,
     });
     out = r.stdout;
   } catch (e) {

@@ -630,3 +630,37 @@ test('스탬프 — ops 가 없는 응답에서 터지지 않는다. 판정은 �
     assert.deepEqual(stampProvider(bad as unknown as ChangeSet, 'gemini', NOW), bad);
   }
 });
+
+/* ---------------- Windows 실행 파일 고르기 ---------------- */
+
+// 2026-09-07 사내 PC 실측: `spawn C:\Users\...\AppData\Roaming\npm\gemini ENOENT` 로
+// 열 번 다 안 떴다. npm 전역 설치가 확장자 없는 껍데기를 같이 깔고 `where` 가 그것을
+// 먼저 주는데, sh 스크립트라 CreateProcess 가 못 읽는다 (ROADMAP §8).
+import { pickWindowsBin } from '../src/core/agent/exec.ts';
+
+const NPM_WHERE = [
+  'C:\\Users\\hong\\AppData\\Roaming\\npm\\gemini',
+  'C:\\Users\\hong\\AppData\\Roaming\\npm\\gemini.cmd',
+  'C:\\Users\\hong\\AppData\\Roaming\\npm\\gemini.ps1',
+].join('\r\n');
+
+test('확장자 없는 npm 껍데기를 고르지 않는다', () => {
+  const got = pickWindowsBin('gemini', NPM_WHERE);
+  assert.equal(got.path, 'C:\\Users\\hong\\AppData\\Roaming\\npm\\gemini.cmd');
+  assert.equal(got.shell, true);
+});
+
+test('.exe 가 있으면 .cmd 보다 먼저 쓴다 — cmd.exe 를 거치면 인용부호가 깨진다', () => {
+  const got = pickWindowsBin('claude', ['C:\\p\\claude', 'C:\\p\\claude.cmd', 'C:\\p\\claude.exe'].join('\r\n'));
+  assert.equal(got.path, 'C:\\p\\claude.exe');
+  assert.equal(got.shell, false);
+});
+
+test('.ps1 은 후보가 아니다 — spawn 이 못 띄운다', () => {
+  assert.equal(pickWindowsBin('x', 'C:\\p\\x.ps1').path, 'x');
+});
+
+test('못 찾으면 이름을 그대로 돌려준다. 판정은 부르는 쪽이 한다', () => {
+  assert.equal(pickWindowsBin('gemini', '').path, 'gemini');
+  assert.equal(pickWindowsBin('gemini', '').shell, false);
+});

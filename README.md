@@ -205,6 +205,15 @@ Jaro-Winkler 임계는 0.92에서 0.96으로 올려야 합니다.
 에 평문 토큰이 남지 않았습니다. 실측값과 재현 방법은
 [`docs/M2-PLAN.md`](docs/M2-PLAN.md) §17.5에 있습니다.
 
+2026-09-07에 사내 PC에서 CLI 회수 스크립트를 돌려 수치만 받아 왔습니다. Claude Code
+2.1.260은 세 사례를 전부 통과했고 **Gemini는 한 번도 뜨지 않았습니다** —
+`spawn ...\npm\gemini ENOENT`. npm 전역 설치가 확장자 없는 껍데기를 같이 깔고
+`where`가 그것을 먼저 줍니다. 그것은 sh 스크립트라 Windows가 못 띄웁니다. 같은 결함이
+제품 코드(`core/agent/exec.ts`)에도 있었으므로 **배포한 exe로도 사내에서 Gemini를 못
+띄웠을 것입니다.** `.exe`를 먼저 고르도록 고쳤습니다. 그래서 같이 받아 온 W3 수치
+(n=10 · 전부 0%)는 Gemini의 성적을 잰 것이 아닙니다. W3의 표본은 여전히 3입니다
+([`docs/ROADMAP.md`](docs/ROADMAP.md) §8).
+
 ### 받아 쓰는 법
 
 [릴리스](https://github.com/yooyoopd-dev/co-secondbrain/releases/latest)에서

@@ -40,6 +40,9 @@ JSON 만 냈고 앱의 관문 7개를 전부 통과했다. 응답은 `spikes/fix
 
 n=3 은 여전히 작다. **파서는 펜스가 있는 경우와 없는 경우를 둘 다 받아야 한다.**
 
+2026-09-07 에 n=10 으로 다시 재려 했는데 Gemini 가 한 번도 안 떴다. 그 10 은 표본이
+아니다 — 왜인지는 §8 에 있다.
+
 ### 1.1 같이 나온 결함 — 모델이 표본의 front-matter 를 베낀다
 
 **해결됨 (7번).** 규약 파일에 넣은 페이지 표본의 값을 모델이 그대로 복사한다.
@@ -183,3 +186,51 @@ Gemini 로 돌려 봐야 `generated_by` 결함이 드러나기 때문이다.
 
 교훈은 하나다. 리눅스 컨테이너에서 초록이라는 것이 Windows 에서 돈다는 뜻이 아니다.
 배포 워크플로가 두 os 에서 같은 검사를 돌리는 자리가 됐다.
+
+## 8. 사내 PC 2026-09-07 — 회수한 수치가 CLI 성적이 아니었다
+
+사내 PC 에서 `record.mjs` 와 `gemini-schema-check.mjs` 를 돌리고 수치만 옮겨 적어 왔다
+(원문 반출 없음, §3 규약대로).
+
+| 회수한 것 | 값 |
+|---|---|
+| W3 | n=10 · json 0% · schema 0% · anchor 0% |
+| 형식 | fenced 0% · 파싱 실패 10 |
+| 앵커 위반 | 없음 |
+| `record.mjs` — claude-code 2.1.260 | 3사례 전부 PASS |
+| `record.mjs` — gemini | 3사례 전부 무응답 · `spawn C:\Users\...\AppData\Roaming\npm\gemini ENOENT` |
+| `record.mjs` — codex | 미설치, 건너뜀 |
+
+### 8.1 0% 는 Gemini 가 못 맞춘 것이 아니다
+
+ENOENT 하나가 전부를 설명한다. **npm 전역 설치는 확장자 없는 껍데기를 같이 깐다** —
+`gemini` · `gemini.cmd` · `gemini.ps1` 이 한 폴더에 있고 `where` 는 확장자 없는 것을 먼저
+준다. 그것은 sh 스크립트라 Windows 의 CreateProcess 가 못 읽는다. `record.mjs` 의
+`resolveBin` 이 `[0]` 을 그냥 집었다. `gemini-schema-check.mjs` 는 `execFile('gemini', ...)`
+를 그대로 불렀다. 후자는 try/catch 가 ENOENT 를 빈 응답으로 삼켜서 **파싱 실패 10 으로
+기록됐다.**
+
+claude-code 가 통과한 것은 `where claude` 의 첫 실행 후보가 띄울 수 있는 형태였다는
+뜻이다. 어떤 확장자였는지는 회수한 수치에 없어서 **확실하지 않다.**
+
+그러므로 **W3 의 n 은 여전히 3 이다** (§1 의 회수본). 이번 실행은 Gemini 의 스키마
+안정성을 재지 못했다.
+
+### 8.2 제품 코드도 같은 결함을 갖고 있었다
+
+`core/agent/exec.ts` 가 `spawn(bin, ...)` 을 shell 없이 불렀다. **배포한 exe 로도 사내 PC
+에서 Gemini 를 못 띄웠을 것이다.** 설정 화면에는 "이 PC 에서 못 찾았습니다" 로만 보였을
+것이라 원인을 짐작하기 어려웠다.
+
+`pickWindowsBin` 을 넣어 `.exe` · `.com` 을 먼저, 없으면 `.cmd` · `.bat` 을 고른다.
+`.cmd` 는 cmd.exe 를 거쳐야 하는데 거기서는 Node 가 `" ^ & | < > %` 를 다 지켜 주지
+못한다. claude-code 는 스키마 JSON 을 argv 로 넘기므로 그런 인자가 섞이면 **조용히 깨지는
+대신 거절한다.** 못 맞춘 결과를 모델 탓으로 읽는 것보다 안 도는 편이 낫다.
+
+리눅스에서도 도는 순수 함수라 `app/test/agent.test.ts` 가 4건으로 잠근다.
+
+### 8.3 다음 왕복에서 다시 재야 할 것
+
+- `node spikes/cli/record.mjs --only gemini` — 이번 수정으로 Gemini 가 뜨는지
+- 뜨면 `node spikes/cli/gemini-schema-check.mjs 10` — W3 를 n=10 으로 다시
+- `where claude` 와 `where gemini` 의 출력 그대로 (경로는 사용자명을 지우고)
