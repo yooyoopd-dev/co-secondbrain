@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 // 사내 PC 에서 도는 회수 스크립트. 의존성이 없어야 해서 app 코드를 import 하지 못한다.
 // 그래서 값이 복사돼 있고, 어긋나면 여기서 잡는다.
-import { CASES, CLIS, CONVENTION, PAGE_TEMPLATE, SCHEMA, check, promptFor, stripFence, unwrapGemini } from '../../spikes/cli/record.mjs';
+import { CASES, CLIS, CONVENTION, PAGE_TEMPLATE, SCHEMA, check, geminiTokens, promptFor, stripFence, unwrapGemini } from '../../spikes/cli/record.mjs';
 import { CHANGESET_SCHEMA } from '../src/core/agent/schema.ts';
-import { buildArgv as gBuildArgv } from '../src/core/agent/gemini.ts';
+import { buildArgv as gBuildArgv, usageFromStats } from '../src/core/agent/gemini.ts';
 import { PAGE_TEMPLATE as APP_TEMPLATE } from '../src/core/agent/ingest.ts';
 
 test('회수 스크립트의 스키마가 app 의 것과 같다', () => {
@@ -16,6 +16,15 @@ test('회수 스크립트가 앱과 같은 인자로 gemini 를 부른다', () =
   // 어긋나면 회수본이 앱 경로의 증거가 아니게 된다. 실제로 어긋난 적이 있다 —
   // 스파이크만 프롬프트를 argv 로 넘겨서 사내 왕복 한 번을 버렸다 (ROADMAP.md §8.4).
   assert.deepEqual(CLIS.find((c) => c.id === 'gemini')!.args('/tmp/wd'), gBuildArgv());
+});
+
+test('회수 스크립트와 앱이 토큰을 같은 셈으로 센다', () => {
+  // 2026-09-07 사내 실측 봉투. candidates 만 더하면 181 이 빈다.
+  const env = { stats: { models: { 'gemini-3.1-pro-preview': { tokens: { input: 9178, prompt: 9178, candidates: 2, total: 9361, cached: 0 } } } } };
+  const app = usageFromStats(env);
+  assert.deepEqual(geminiTokens(JSON.stringify(env)), { input: app.inputTokens, output: app.outputTokens });
+  assert.equal(app.outputTokens, 183);
+  assert.equal(geminiTokens('{"summary":"s"}'), null, 'stats 가 없으면 null');
 });
 
 test('봉투는 열고 벌거벗은 ChangeSet 은 그대로 둔다', () => {

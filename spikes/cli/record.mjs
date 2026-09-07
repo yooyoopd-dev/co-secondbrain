@@ -142,6 +142,35 @@ export function unwrapGemini(out) {
   return j.response ?? '';
 }
 
+/**
+ * 봉투에서 토큰 수를 꺼낸다. 봉투가 아니거나 `stats` 가 없으면 null 이다.
+ *
+ * 낸 토큰은 `total - prompt` 로 구한다. `candidates` 만 더하면 모자란다 — 실측에서
+ * `prompt 9178 + candidates 2` 가 `total 9361` 에 못 미쳤다. 이름을 다 모르는 칸이
+ * 있다는 뜻이다. `app/src/core/agent/gemini.ts` 의 `usageFromStats` 와 같은 셈이고,
+ * 어긋나면 `app/test/record.test.ts` 가 잡는다.
+ */
+export function geminiTokens(out) {
+  let j;
+  try {
+    j = JSON.parse(out.trim());
+  } catch {
+    return null;
+  }
+  const models = j?.stats?.models;
+  if (!models || typeof models !== 'object') return null;
+  let input = 0;
+  let output = 0;
+  for (const m of Object.values(models)) {
+    const t = m?.tokens ?? {};
+    const i = t.prompt ?? t.input ?? 0;
+    const tot = t.total ?? 0;
+    input += i;
+    output += tot > i ? tot - i : (t.candidates ?? 0);
+  }
+  return { input, output };
+}
+
 export function stripFence(s) {
   const m = s.match(/```(?:json)?\s*([\s\S]*?)```/);
   return (m ? m[1] : s).trim();
@@ -359,7 +388,10 @@ async function main() {
           if (v.fatal) fatalCount++;
         }
       }
-      console.log(`  ${c.id.padEnd(9)} ${verdict.padEnd(6)} ${String(ms).padStart(6)}ms  ${path.basename(rawPath)}`);
+      // 토큰이 봉투에 실려 오면 같이 찍는다. 지출 계량기가 셀 값이 바로 이것이다.
+      const tk = geminiTokens(r.stdout);
+      const tkText = tk ? `  입력 ${tk.input} · 출력 ${tk.output} 토큰` : '';
+      console.log(`  ${c.id.padEnd(9)} ${verdict.padEnd(6)} ${String(ms).padStart(6)}ms  ${path.basename(rawPath)}${tkText}`);
       for (const x of reasons) console.log(`    - ${x}`);
       rows.push({ cli: cli.id, installed: true, version: info.version, shell: info.shell, case: c.id, verdict, ms, reasons, verified: cli.verified });
     }

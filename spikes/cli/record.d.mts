@@ -24,6 +24,7 @@ export declare const CONVENTION: string;
 export declare const CASES: RecordCase[];
 export declare function promptFor(c: RecordCase, withSchema: boolean): string;
 export declare function unwrapGemini(out: string): string;
+export declare function geminiTokens(out: string): { input: number; output: number } | null;
 
 export interface RecordCli {
   id: string;
