@@ -11,20 +11,81 @@
 //
 //   node --experimental-strip-types spikes/selfcheck/extract.mjs <폴더>
 //   node --experimental-strip-types spikes/selfcheck/extract.mjs --selftest
+//   node --experimental-strip-types spikes/selfcheck/extract.mjs --deps
 //
-// 앱의 추출기를 그대로 부른다. `app` 의존성이 깔려 있어야 돈다 (ROADMAP §12).
+// 앱의 추출기를 그대로 부른다. **`app` 의 운영 의존성만 있으면 된다** — electron 은
+// 필요 없다. `npm ci --omit=dev` 로 깐다 (ROADMAP §12).
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extractFile, kindOf } from '../../app/src/core/extract/index.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+
+/* ------------------------------------------------------------------ *
+ * `--deps` — 어떤 라이브러리가 실제로 깔렸는가.
+ *
+ * 사내 PC 에서 설치가 반쯤 되는 일이 잦다. 그 상태로 문서 폴더를 훑으면 **특정 확장자만
+ * 조용히 전부 실패**하고 그 수치를 진짜로 착각한다. 먼저 여기서 걸러 낸다.
+ * ------------------------------------------------------------------ */
+/**
+ * **라이브러리 이름으로 부르지 않는다.** 이 스크립트는 `spikes/` 아래에 있어서
+ * `import('mammoth')` 는 `spikes/node_modules` 에서 찾는다. 정작 추출기가 쓰는 것은
+ * `app/node_modules` 다. 실제로 `yaml` 하나가 그 차이로 잘못 "실패" 로 나왔다.
+ *
+ * 앱 모듈을 경로로 부르면 그 안의 `import mammoth` 가 `app/` 기준으로 풀린다.
+ * 재려는 것이 바로 그 해석이다.
+ */
+const APP_MODULES = [
+  ['../../app/src/core/extract/docx.ts', 'docx        mammoth'],
+  ['../../app/src/core/extract/xlsx.ts', 'xlsx · csv  exceljs'],
+  ['../../app/src/core/extract/pptx.ts', 'pptx        jszip · fast-xml-parser'],
+  ['../../app/src/core/extract/pdf.ts', 'pdf         pdfjs-dist'],
+  ['../../app/src/core/extract/email.ts', 'eml · msg   mailparser · msgreader'],
+  ['../../app/src/core/extract/transcript.ts', 'vtt · srt   (라이브러리 없음)'],
+  ['../../app/src/core/extract/plain.ts', 'txt · md    (라이브러리 없음)'],
+  ['../../app/src/core/page.ts', '페이지 파싱  yaml'],
+  ['../../app/src/core/lint/dedup.ts', '엔티티 유사도 (라이브러리 없음)'],
+];
+
+if (process.argv.includes('--deps')) {
+  let bad = 0;
+  console.log('');
+  for (const [mod, what] of APP_MODULES) {
+    try {
+      await import(mod);
+      console.log(`  OK    ${what}`);
+    } catch (e) {
+      bad++;
+      console.log(`  실패  ${what}  ← ${String(e?.code ?? e?.message).slice(0, 50)}`);
+    }
+  }
+  console.log('');
+  console.log(
+    bad === 0
+      ? '전부 깔렸습니다. 자가검사로 넘어가십시오.'
+      : `${bad}개가 안 열립니다. app 폴더에서 npm ci --omit=dev 를 다시 돌리십시오.`,
+  );
+  process.exit(bad === 0 ? 0 : 2);
+}
+
+const { extractFile, kindOf } = await import('../../app/src/core/extract/index.ts');
+
 const selftest = process.argv.includes('--selftest');
 const target = selftest ? path.join(HERE, '..', 'fixtures', 'files') : process.argv[2];
 
 if (!target) {
   console.error('폴더를 주십시오.  node --experimental-strip-types spikes/selfcheck/extract.mjs <폴더>');
   process.exit(2);
+}
+
+if (selftest) {
+  // 시험용 원본은 저장소에 안 담겨 있다. 없으면 무엇을 하라는지 알려 주고 멈춘다.
+  const n = await fs.readdir(target).catch(() => []);
+  if (n.length === 0) {
+    console.error('시험용 원본이 없습니다. 먼저 만드십시오:');
+    console.error('  cd spikes && npm install && node fixtures/make.mjs');
+    process.exit(2);
+  }
 }
 
 /* ------------------------------------------------------------------ *

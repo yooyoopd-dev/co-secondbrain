@@ -492,11 +492,18 @@ Claude 쪽만 본다. Gemini 는 토큰만 쌓는다. 상한이 느슨한 쪽으
 
 | 대상 | 명령 | 푸는 것 |
 |---|---|---|
-| 앱 의존성 | `cd app; npm ci` | **17 · 18 자가검사 실행** |
+| 앱 운영 의존성 | `cd app; npm ci --omit=dev` | **17 · 18 자가검사 실행** |
 | 스파이크 의존성 | `cd spikes; npm install` | 시험용 원본 생성 |
-| playwright | `npm i -g playwright` | `npm run smoke:win` |
 
 Codex 는 여기 없다. 19번과 W3b 는 보류다 (§9.3).
+
+**`--omit=dev` 를 빼면 안 된다.** 그냥 `npm ci` 는 electron 을 같이 깐다. electron 은
+설치 뒤에 100MB 짜리 바이너리를 GitHub 릴리스에서 받아 오는데, 그 자리는 패키지
+레지스트리가 아니어서 사내 프록시로도 잘 막힌다. **자가검사는 electron 을 안 쓴다.** 실측으로 확인했다 —
+운영 의존성만 깔면 162개 · 155MB 이고 자가검사 12건이 그대로 통과한다 (전체는 607MB).
+
+`npm run smoke:win` 만 electron 이 필요하다. 그건 CI 가 `windows-latest` 에서 이미 돌리므로
+사내 PC 에서는 안 해도 된다.
 
 회수 스크립트 셋(`record.mjs` · `gemini-schema-check.mjs` · `token-ratio.mjs`)과 배포본
 exe 는 그대로 설치가 필요 없다.
@@ -517,35 +524,53 @@ exe 는 그대로 설치가 필요 없다.
 ## 13. 17 · 18 을 사내에서 돌리는 법
 
 두 스크립트가 앱의 추출기와 유사도 코드를 그대로 부른다. **여기서 다시 구현하면 앱과
-갈린다.** 그래서 `app` 의존성이 깔려 있어야 돈다 (§12).
+갈린다.** 그래서 `app` 의 운영 의존성이 깔려 있어야 돈다.
+
+### 13.1 준비 — 순서가 중요하다
 
     cd app
-    npm ci
+    npm ci --omit=dev          ← --omit=dev 를 빼면 electron 에서 막힌다 (§12)
     cd ..
 
-### 13.1 먼저 자가 검사부터
+    cd spikes
+    npm install                ← 시험용 원본을 만드는 데만 쓴다
+    node fixtures/make.mjs     ← 아홉 개가 생긴다. 저장소에 안 담겨 있다
+    cd ..
 
-사내 문서에 대기 전에 정답을 아는 입력으로 스크립트가 성한지 본다. 12건이 통과해야 한다.
+**두 번째 묶음을 건너뛰면 자가검사가 "0건 · FAIL 4건" 으로 끝난다.** 실제로 그렇게
+한 번 버렸다. 지금은 스크립트가 무엇이 없는지 말해 준다.
+
+### 13.2 깔린 것부터 본다
+
+설치가 반쯤 되면 **특정 확장자만 조용히 전부 실패**하고 그 수치를 진짜로 착각한다.
+
+    node --experimental-strip-types spikes/selfcheck/extract.mjs --deps
+
+아홉 줄이 전부 `OK` 여야 한다. 하나라도 `실패` 면 `npm ci --omit=dev` 를 다시 돌린다.
+
+### 13.3 자가 검사
+
+정답을 아는 입력으로 스크립트가 성한지 본다. 12건이 통과해야 한다.
 
     node --experimental-strip-types spikes/selfcheck/extract.mjs --selftest
     node --experimental-strip-types spikes/selfcheck/entities.mjs --selftest
 
-`extract` 쪽은 `spikes/fixtures/make.mjs` 가 만든 아홉 개를 쓴다. 먼저 만들어 둔다
-(`cd spikes && npm install && node fixtures/make.mjs`).
-
-### 13.2 17번 — 추출기
+### 13.4 17번 — 추출기
 
     node --experimental-strip-types spikes/selfcheck/extract.mjs "D:\문서폴더"
 
 화면에 표 하나가 뜬다. **파일명도 원문도 안 나온다.** 실패 사유는 다섯 갈래로만 센다 —
 원본 메시지에는 거의 항상 경로가 섞여 있어 통째로 버린다.
 
-### 13.3 18번 — 엔티티 유사도
+### 13.5 18번 — 엔티티 유사도
 
 이름 목록을 한 줄에 하나씩 담은 텍스트 파일을 만든다. 위키의 엔티티 제목이어도 되고
 사내 시스템에서 뽑은 거래처명이어도 된다.
 
     node --experimental-strip-types spikes/selfcheck/entities.mjs 이름목록.txt
+
+`--selftest` 는 스크립트 안의 합성 이름 12개를 쓴다. **그것이 통과했다고 W5 를 잰 것이
+아니다.** 사내 이름 목록을 넣어야 잰 것이다.
 
 **화면이 두 칸으로 나뉜다.**
 
@@ -558,7 +583,7 @@ exe 는 그대로 설치가 필요 없다.
 넣는다. 그 숫자만 나간다. 사람이 세는 이유는 같은 대상인지를 사내 사정을 아는 사람만
 알기 때문이다.
 
-### 13.4 무엇을 보려는 것인가
+### 13.6 무엇을 보려는 것인가
 
 M0 §4.3 에서 Jaro-Winkler 임계를 0.92 에서 0.96 으로 올렸다. 0.92 에서 오병합 3건이
 났기 때문이다. **사내 이름으로도 0.96 이 오병합 0 인가**가 18번의 물음이다.
