@@ -129,7 +129,7 @@ Windows 양쪽에서 돕니다. Windows 쪽은 **묶은 배포본을 띄워** �
 | [docs/PLAN.md](docs/PLAN.md) | 전체 계획 — 개인/CO 이중 공간, 3계층 위키, 인제스트·질의·린트, CLI 어댑터, 마일스톤 |
 | [docs/PROVIDER-ROUTING.md](docs/PROVIDER-ROUTING.md) | 공급자 라우팅 — 토큰 상한이 다른 CLI를 섞어 쓰기 |
 | [docs/HUB.md](docs/HUB.md) | CO-Hub 서버 — 데이터 모델, API, 동기화 알고리즘, 보안, 운영 |
-| [docs/HUB-SETUP.md](docs/HUB-SETUP.md) | **CO-Hub 설치** — Ubuntu PC 에 올리는 절차 |
+| [docs/HUB-SETUP.md](docs/HUB-SETUP.md) | **CO-Hub 설치** — Ubuntu PC 에 올리는 절차. SSH 원격 설치 포함 |
 | [docs/OFFLINE.md](docs/OFFLINE.md) | **오프라인 설치·운영 가이드** — 인터넷 없는 사내 PC 용 |
 | [docs/DESIGN-SYSTEM.md](docs/DESIGN-SYSTEM.md) | 디자인 토큰·컴포넌트 규칙 |
 | [docs/REFERENCE-llm-wiki.md](docs/REFERENCE-llm-wiki.md) | 기반이 된 Karpathy "LLM Wiki" 원문 정리 및 본 설계의 반영·변형 내역 |
@@ -241,8 +241,8 @@ Windows가 못 띄웁니다. 같은 결함이 제품 코드(`core/agent/exec.ts`
 
 [릴리스](https://github.com/yooyoopd-dev/co-secondbrain/releases/latest)에서
 `co-secondbrain-<판>-portable.exe` 하나를 받아 두 번 누르십시오. 지금 판은 **v0.9.0-beta**
-입니다. 사내 동기화 서버는 같은 자리의 `co-hub-<판>.tgz` 이고 절차는
-[`docs/HUB-SETUP.md`](docs/HUB-SETUP.md)에 있습니다. 설치하지 않습니다.
+입니다. 사내 동기화 서버는 같은 자리의 `co-hub-<판>.tgz` 입니다. 개인 PC 에서 SSH 로 Ubuntu PC 에
+올리는 절차까지 [`docs/HUB-SETUP.md`](docs/HUB-SETUP.md)에 있습니다. 설치하지 않습니다.
 사내 PC 에 설치 권한이 없어도 됩니다. 새 판이 나오면 이전 판 exe 는 지웁니다 —
 목록에서 옛 파일을 집어 가는 일을 막습니다.
 
