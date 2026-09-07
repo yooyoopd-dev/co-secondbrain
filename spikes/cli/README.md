@@ -164,6 +164,73 @@ Gemini에는 `--json-schema`(Claude Code)·`--output-schema`(Codex)에 해당하
 
 ---
 
+## 사내 프록시로 외부 설치하기
+
+사내 Windows PC 에서 **HTTP 프록시를 거치면 외부 패키지 설치가 됩니다.** 2026-09-08 에
+pip 로 확인했습니다.
+
+```powershell
+python -m pip install "markitdown[pdf,docx,pptx]" `
+  --proxy "http://<사내 프록시>:8080" `
+  --trusted-host pypi.org --trusted-host files.pythonhosted.org
+```
+
+**프록시 주소는 여기 적지 않습니다.** 사내망 구성이라 저장소에 남기지 않습니다. IT 가 알려
+준 주소를 그때그때 넣으십시오.
+
+### npm 은 아직 안 봤습니다
+
+확인된 것은 pypi 뿐이고 npm 레지스트리가 같은 프록시로 통하는지는 **모릅니다.** 한 줄로
+봅니다.
+
+```powershell
+$env:HTTP_PROXY  = "http://<사내 프록시>:8080"
+$env:HTTPS_PROXY = "http://<사내 프록시>:8080"
+npm ping
+```
+
+환경변수로 두는 편이 `--proxy` 플래그보다 덜 깨집니다. npm 은 http 와 https 설정이 따로라
+플래그 하나만 주면 절반만 걸립니다.
+
+### TLS 가 걸리면
+
+사내 프록시가 TLS 를 가로채면 `SELF_SIGNED_CERT_IN_CHAIN` 이 납니다. **회사 CA 인증서를
+넣는 것이 정답입니다.**
+
+```powershell
+npm config set cafile C:\path\to\사내-CA.pem
+```
+
+`npm config set strict-ssl false` 는 검증 자체를 끕니다. pip 의 `--trusted-host` 와 같은
+성격이라 마지막 수단으로만 씁니다.
+
+### 무엇이 풀리는가
+
+| 대상 | 명령 | 푸는 것 |
+|---|---|---|
+| Codex CLI | `npm i -g @openai/codex` | **W3b · ROADMAP 19** |
+| playwright | `npm i -g playwright` | `npm run smoke:win` |
+| 스파이크 의존성 | `cd spikes; npm install` | 시험용 원본 생성 |
+| 앱 의존성 | `cd app; npm ci` | 17 · 18 자가검사 실행 |
+
+### 안 깔아도 되는 것
+
+- `record.mjs` · `gemini-schema-check.mjs` · `token-ratio.mjs` — Node 만 있으면 됩니다
+- 배포본 `co-secondbrain-*-portable.exe` — 설치하지 않습니다
+
+### 설치와 실행은 다릅니다
+
+레지스트리가 열렸다고 **실행 때 밖으로 나가는 길이 열린 것은 아닙니다.** Codex 는
+`api.openai.com` 에 붙어야 돕니다. 깔고 나서 한 번 돌려 봐야 압니다.
+
+```powershell
+codex --version
+node spikes\cli\record.mjs --only codex --n 1
+```
+
+`무응답` 이 뜨면 `spikes\fixtures\cli\codex-kickoff.stderr.txt` 에 사유가 있습니다.
+그 파일에는 합성 입력만 들어 있어 반출해도 됩니다.
+
 ## W2 · W3 · W3b — 회수 스크립트 `record.mjs`
 
 사내 PC 에서 **이 파일 하나만** 돌립니다. 사내에서 개발하지 않습니다.
