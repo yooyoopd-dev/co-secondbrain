@@ -60,7 +60,9 @@ function handle(line) {
   }
 
   if (m.method === 'tools/call') {
-    send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: 'pong' }] } });
+    // 표식을 심어 두면 "붙었는가" 를 답 문자열 하나로 판정할 수 있다. 모델이 도구를
+    // 안 부르고 지어낼 수 없는 값이라야 해서 부르는 쪽이 난수를 넣는다.
+    send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: process.env.SB_PROBE_TOKEN ?? 'pong' }] } });
     return;
   }
 

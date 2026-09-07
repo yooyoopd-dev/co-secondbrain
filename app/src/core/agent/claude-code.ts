@@ -86,6 +86,7 @@ export function createClaudeCode(exec: Exec = realExec): AgentCli {
     id: 'claude-code',
     supportsSchema: true,
     conventionFile: 'CLAUDE.md',
+    mcpConfigFile: 'mcp.json',
 
     async detect() {
       try {

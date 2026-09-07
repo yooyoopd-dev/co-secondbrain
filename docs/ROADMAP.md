@@ -828,3 +828,71 @@ CLI 를 한 번 부르면 돈이 나간다. 그런데 검토 화면을 벗어나
 
 셋째가 유망해 보이지만 **추측입니다.** 재기 전에는 안 넣는다. 그때까지 `query` 는
 `claude-code` 로만 간다.
+
+## 16. Gemini 를 읽기 경로에 넣었다 (2026-09-09)
+
+사용자가 사내 PC 의 **전역** Gemini 설정(`~/.gemini/settings.json`)에
+`security.folderTrust.enabled: false` 를 넣었다. §15.8 에서 "대가가 있다" 고 적은 첫째
+길을 사용자가 고른 것이다. 그에 맞춰 앱을 고쳤다.
+
+### 16.1 무엇을 재고 무엇을 안 쟀나
+
+이 컨테이너에서 잰 것 (모델 호출 없음, 비용 0):
+
+| 잰 것 | 결과 |
+|---|---|
+| `gemini mcp add -s project` 가 쓰는 자리 | `<cwd>/.gemini/settings.json` |
+| 그 파일의 모양 | `{ "mcpServers": { "<이름>": { command, args, trust } } }` |
+| 서버를 좁히는 플래그 | `--allowed-mcp-server-names <이름...>` |
+| `--allowed-tools` | 있지만 **DEPRECATED** 라고 적혀 있다. 안 쓴다 |
+| `--mcp-config` | **없다.** 설정 파일만 읽는다 |
+
+**안 잰 것:** 그 설정을 끈 기계에서 Gemini 가 MCP 도구를 실제로 부르는가. 그 기계가
+사내에만 있다. 이 컨테이너에는 Gemini 인증이 없어 봉투가 auth 오류(code=41)로 끝난다.
+
+### 16.2 그래서 조용히 틀리지 않게 막았다
+
+MCP 가 꺼져도 모델은 답을 낸다. 위키를 안 읽고 아는 대로 답한 것인데 **사람은 그것을
+구별할 방법이 없다.** 그래서 어댑터가 stderr 을 보고 답을 버린다.
+
+```
+Warning: MCP servers are configured but disabled because this folder is untrusted.
+```
+
+문구는 2026-09-05 사내 실측에서 받은 그대로다 ([`M2-PLAN.md`](M2-PLAN.md) §12.2).
+판이 올라 문구가 달라져도 걸리도록 `untrusted` 와 `mcp` 두 낱말로 본다.
+`mcp` 를 안 쓰는 호출(밀어 넣기 경로)은 같은 경고를 봐도 그냥 간다.
+
+### 16.3 목록을 둘로 나눴다
+
+| 목록 | 정하는 것 | 지금 |
+|---|---|---|
+| `MCP_CAPABLE` | 라우팅이 보내도 되는가 | `claude-code` · **`gemini`** |
+| `MCP_VERIFIED` | 되던 경로를 바꿔도 되는가 | `claude-code` |
+
+`lint.judgment` 는 밀어 넣기로 이미 돌고 있고 두 방식이 같은 문제를 잡는다
+([`M2-PLAN.md`](M2-PLAN.md) §13.1). 확인 전에 그 경로를 당겨 가기로 갈아 끼우면
+**되던 것이 깨질 수 있다.** 아껴지는 토큰보다 손해가 크다. 사내에서 확인되면
+`MCP_VERIFIED` 를 지우고 목록 하나로 되돌린다.
+
+### 16.4 사내에서 확인하는 법
+
+```powershell
+cd spikes\cli
+node gemini-mcp-check.mjs
+```
+
+임시 폴더에 표식 하나를 두고 모델이 그것을 도구로 가져오는지 본다. **문서를 안 읽고 안
+내보낸다.** 화면에 나오는 것은 세 줄이다.
+
+```
+1 신뢰 게이트가 MCP 를 껐는가 : 안 껐음 / 껐음
+2 도구를 실제로 불렀는가     : 불렀음 / 못 불렀음
+3 종료 코드                  : 0
+```
+
+둘 다 통과하면 알려 주십시오. `MCP_VERIFIED` 를 지우고 `lint.judgment` 도 당겨 가기로
+돌립니다. 1번이 "껐음" 이면 전역 설정이 안 먹은 것입니다. 그 상태에서도 앱은 답을
+버리므로 질의가 막힐 뿐 틀린 답이 나오지는 않습니다.
+
+`--selftest` 는 CLI 를 안 부르고 스크립트 자신만 본다 (7건).

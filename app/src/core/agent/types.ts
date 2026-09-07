@@ -91,6 +91,14 @@ export interface AgentCli {
   supportsSchema: boolean;
   /** 작업 디렉터리에 놓을 규약 파일 이름. CLI 마다 찾는 이름이 다르다 (PLAN.md §7.3) */
   conventionFile: 'CLAUDE.md' | 'AGENTS.md' | 'GEMINI.md';
+  /**
+   * MCP 설정을 작업 디렉터리 어디에 써야 하는가. 상대 경로다.
+   *
+   * Claude Code 는 `--mcp-config` 로 경로를 받으므로 이름이 아무것이나 된다.
+   * **Gemini 에는 그런 플래그가 없다** — cwd 의 `.gemini/settings.json` 만 읽는다
+   * (2026-09-09 `gemini mcp add -s project` 로 확인).
+   */
+  mcpConfigFile: string;
   detect(): Promise<{ found: boolean; version?: string }>;
   run(job: AgentJob, schema: object): Promise<AgentResult>;
 }

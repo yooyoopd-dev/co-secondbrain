@@ -20,6 +20,7 @@
 // 주의: 이 봉투 경로는 **W3 를 100% 로 통과시킨 경로가 아니다.** 그때는 평문 stdout
 // 이었다. 사내에서 `record.mjs` 로 다시 재기 전까지 미검증이다 (ROADMAP §10.3).
 import { validateShape, type ChangeSet } from '../changeset.ts';
+import { SERVER_NAME } from '../mcp/config.ts';
 import { realExec } from './exec.ts';
 import { stampProvider } from './stamp.ts';
 import type { AgentCli, AgentResult, Exec, Usage } from './types.ts';
@@ -30,10 +31,35 @@ export const BIN = 'gemini';
 /**
  * `--skip-trust` 는 폴더 신뢰 게이트를 지난다 (M0 §5). `plan` 은 읽기 전용이라
  * 모델이 도구로 파일을 건드리지 못한다. 프롬프트는 `-p` 없이 stdin 으로 간다.
+ *
+ * MCP 를 쓸 때는 `--allowed-mcp-server-names` 로 **우리 서버 하나만** 남긴다.
+ * Claude Code 의 `--strict-mcp-config` 와 같은 자리다 — 사내 PC 에 이미 등록된
+ * 서버가 우리 호출까지 망가뜨린 적이 있다 (`core/mcp/config.ts`).
+ * Gemini 에는 `--mcp-config` 가 없어 설정은 cwd 의 `.gemini/settings.json` 이 진다.
  */
-export function buildArgv(): string[] {
-  return ['--skip-trust', '--approval-mode', 'plan', '-o', 'json'];
+export function buildArgv(mcp = false): string[] {
+  const argv = ['--skip-trust', '--approval-mode', 'plan', '-o', 'json'];
+  if (mcp) argv.push('--allowed-mcp-server-names', SERVER_NAME);
+  return argv;
 }
+
+/**
+ * 폴더 신뢰 게이트가 MCP 를 꺼 버렸는가.
+ *
+ * **조용히 넘어가면 안 된다.** MCP 가 꺼진 채로도 모델은 답을 낸다 — 위키를 안 읽고
+ * 아는 대로 답한 것인데 사람은 그것을 구별할 방법이 없다. 여기서 막는 편이 낫다.
+ *
+ * 경고 문구는 2026-09-05 사내 실측에서 받은 그대로다 (`M2-PLAN.md` §12.2):
+ * `MCP servers are configured but disabled because this folder is untrusted.`
+ * 판이 올라 문구가 조금 달라져도 걸리도록 두 낱말로 본다.
+ */
+export function mcpDisabled(stderr: string): boolean {
+  return /untrusted/i.test(stderr) && /mcp/i.test(stderr);
+}
+
+export const MCP_OFF_MESSAGE =
+  'Gemini 가 폴더 신뢰 때문에 MCP 를 껐습니다. 위키를 안 읽고 답하게 되므로 멈춥니다. ' +
+  '사용자 수준 설정(`~/.gemini/settings.json`)에 `security.folderTrust.enabled: false` 를 넣으십시오.';
 
 /* ---------------- `-o json` 봉투 ---------------- */
 
@@ -175,6 +201,8 @@ export function createGemini(exec: Exec = realExec): AgentCli {
     id: 'gemini',
     supportsSchema: false,
     conventionFile: 'GEMINI.md',
+    // `--mcp-config` 가 없다. cwd 의 프로젝트 설정만 읽는다 (2026-09-09 실측)
+    mcpConfigFile: '.gemini/settings.json',
 
     async detect() {
       try {
@@ -198,7 +226,7 @@ export function createGemini(exec: Exec = realExec): AgentCli {
 
       const call = async (prompt: string) => {
         try {
-          const r = await exec(BIN, buildArgv(), {
+          const r = await exec(BIN, buildArgv(job.mcp !== undefined), {
             cwd: job.workdir, env: process.env, stdin: prompt, onOutput: job.onOutput, signal: job.signal,
           });
           const env = parseEnvelope(r.stdout, r.stderr);
@@ -212,6 +240,8 @@ export function createGemini(exec: Exec = realExec): AgentCli {
 
       const prompt = withSchema(job.prompt, schema);
       const first = await call(prompt);
+      // 위키를 읽어야 하는 호출인데 MCP 가 꺼졌으면 여기서 끝낸다. 답이 오더라도 못 믿는다.
+      if (job.mcp && mcpDisabled(first.stderr)) return fail(MCP_OFF_MESSAGE, first.stdout);
       if (first.env.error !== null) return fail(`CLI 가 거절했습니다: ${first.env.error.slice(0, 300)}`, first.stdout);
       if (!first.env.text.trim()) {
         return fail(`CLI 가 출력 없이 종료했습니다 (code=${first.code}): ${first.stderr.trim().slice(0, 300)}`, first.stdout);

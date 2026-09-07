@@ -50,16 +50,29 @@ export const DEFAULT_ROUTING: Record<TaskKind, RoutingRule> = {
 export const SCHEMA_ENFORCING: readonly ProviderId[] = ['claude-code', 'codex'];
 
 /**
- * 내장 MCP 서버에 붙일 수 있는 공급자.
+ * 내장 MCP 서버에 붙일 수 있는 공급자. **라우팅이 보내도 되는가**를 정한다.
  *
- * **Gemini 는 못 붙는다 (2026-09-05 실측).** 격리 작업 디렉터리에 프로젝트 설정을 써도
- * "folder is untrusted" 로 MCP 를 끈다. `--skip-trust` 는 대화형 확인만 건너뛸 뿐
- * MCP 를 살리지 못하고, 신뢰 판정은 사용자 수준 설정에 있다. 그걸 고치려면 사내 PC 의
- * 기존 설정을 건드려야 해서 안 한다 (PLAN.md §7.2 가 `--mcp-config` 를 고른 이유와 같다).
+ * Gemini 는 2026-09-05 실측에서 못 붙었다. 격리 작업 디렉터리에 프로젝트 설정을 써도
+ * "folder is untrusted" 로 MCP 를 끄고, `--skip-trust` 는 대화형 확인만 건너뛴다.
+ * 신뢰 판정이 사용자 수준 설정에 있어서 앱이 어쩌지 못했다 (M2-PLAN.md §12.2).
+ *
+ * **2026-09-09 에 사용자가 사내 PC 의 전역 설정에 `security.folderTrust.enabled: false`
+ * 를 넣었다.** 그래서 여기에 넣는다. 그 설정이 없는 기계에서는 Gemini 어댑터가
+ * `mcpDisabled` 로 알아채고 **답을 받아도 버린다** — 위키를 안 읽고 답한 것을 사람이
+ * 구별할 방법이 없기 때문이다.
  *
  * Codex 는 아직 확인하지 못했다. 확인 전에는 넣지 않는다.
  */
-export const MCP_CAPABLE: readonly ProviderId[] = ['claude-code'];
+export const MCP_CAPABLE: readonly ProviderId[] = ['claude-code', 'gemini'];
+
+/**
+ * MCP 왕복을 **실제로 확인한** 공급자. 되던 경로를 바꿔도 되는지를 정한다.
+ *
+ * `lint.judgment` 는 밀어 넣기로 이미 돌고 있고 결과가 같다 (M2-PLAN.md §13.1).
+ * Gemini 의 MCP 는 사내 확인 전이라 그 경로를 여기서 갈아 끼우지 않는다 — 되던 것이
+ * 깨지는 손해가 아껴지는 토큰보다 크다. 사내에서 확인되면 이 목록을 지운다.
+ */
+export const MCP_VERIFIED: readonly ProviderId[] = ['claude-code'];
 
 export interface RouteContext {
   /** `detect()` 로 확인한 설치·인증된 공급자 */

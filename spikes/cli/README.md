@@ -53,6 +53,22 @@ claude mcp add m0probe -- node -e "0"     # ← 잘못됨
 
 지금은 `mcp-probe.mjs` — `initialize` / `tools/list` / `tools/call`에 응답하는 실제 최소
 stdio MCP 서버를 씁니다. 우리 앱이 띄울 내장 서버의 골격이기도 합니다.
+`tools/call` 은 `SB_PROBE_TOKEN` 을 그대로 돌려줍니다. 부르는 쪽이 난수를 넣으면
+**모델이 도구를 안 부르고 지어낼 수 없는 값**이 되어 판정이 한 줄로 끝납니다.
+
+### `gemini-mcp-check.mjs` — W3c
+
+Gemini 가 내장 MCP 서버에 실제로 붙는지 봅니다. 2026-09-09 에 사내 전역 설정에
+`security.folderTrust.enabled: false` 를 넣은 뒤 한 번 확인해야 합니다
+([`docs/ROADMAP.md`](../../docs/ROADMAP.md) §16).
+
+```powershell
+node gemini-mcp-check.mjs            # 실제로 부른다
+node gemini-mcp-check.mjs --selftest # CLI 를 안 부른다 (7건)
+```
+
+임시 폴더에 표식 하나를 두고 모델이 그것을 도구로 가져오는지만 봅니다. **사내 문서를
+안 읽고 안 내보냅니다.** 종료 코드는 0 통과 · 1 실패 · 2 안 돌았음입니다.
 
 ## 502 오류에 대한 가설
 

@@ -14,7 +14,7 @@ import { snapshot } from '../core/history.ts';
 import { readWikiPages, writeIndex } from '../core/wiki.ts';
 import { createCli } from '../core/agent/index.ts';
 import { validateChangeSet } from '../core/agent/gemini.ts';
-import { DEFAULT_ROUTING, MCP_CAPABLE, route, type TaskKind } from '../core/agent/router.ts';
+import { DEFAULT_ROUTING, MCP_VERIFIED, route, type TaskKind } from '../core/agent/router.ts';
 import { hashContent, markProposed, planWork, readManifest, recordSource, writeManifest, type Manifest, type SourceState, type WorkPlan } from '../core/cache.ts';
 import { DEFAULT_MONTHLY_USD, EMPTY_LOG, add as addSpend, status as spendStatus, type Limits, type SpendLog, type Status } from '../core/spend.ts';
 import { read as readSpend, write as writeSpend } from '../core/spend-file.ts';
@@ -580,14 +580,16 @@ export class Store {
     if (!picked.ok) return { ok: false, error: picked.reason };
 
     const cli = createCli(picked.provider);
-    const wd = await prepareWorkdir({ 'mcp.json': JSON.stringify(mcpConfig(this.#mcpLaunch(v.root)), null, 1) });
+    // 설정을 놓는 자리가 CLI 마다 다르다. Gemini 는 cwd 의 `.gemini/settings.json` 만 읽는다.
+    const cfg = JSON.stringify(mcpConfig(this.#mcpLaunch(v.root), picked.provider === 'gemini'), null, 1);
+    const wd = await prepareWorkdir({ [cli.mcpConfigFile]: cfg });
     try {
       const r = await this.#runAgent(hooks, async (h) =>
         cli.run(
           {
             workdir: wd.root,
             prompt: questionPrompt(question, coreContextBlock(await this.coreContext())),
-            mcp: { configPath: safeJoin(wd.root, 'mcp.json'), allowedTools: ALLOWED_TOOLS },
+            mcp: { configPath: safeJoin(wd.root, cli.mcpConfigFile), allowedTools: ALLOWED_TOOLS },
             validate: (d) => parseAnswer(d).reason,
             ...h,
           },
@@ -663,7 +665,7 @@ export class Store {
 
     // MCP 에 붙는 공급자는 당겨 가고, 못 붙으면 밀어 넣는다 (PLAN.md §7.2 안 B / 안 A).
     // 전수 스캔은 어차피 다 읽으므로 두 방식의 결과가 같다 — 값만 다르다.
-    const pull = MCP_CAPABLE.includes(picked.provider);
+    const pull = MCP_VERIFIED.includes(picked.provider);
     if (pull && !this.#mcpLaunch) return { ok: false, error: '읽기 경로가 설정되지 않았습니다' };
 
     let prompt: string;
@@ -677,14 +679,14 @@ export class Store {
 
     const cli = createCli(picked.provider);
     const wd = await prepareWorkdir(
-      pull ? { 'mcp.json': JSON.stringify(mcpConfig(this.#mcpLaunch!(v.root)), null, 1) } : {},
+      pull ? { [cli.mcpConfigFile]: JSON.stringify(mcpConfig(this.#mcpLaunch!(v.root)), null, 1) } : {},
     );
     try {
       const r = await cli.run(
         {
           workdir: wd.root,
           prompt,
-          ...(pull ? { mcp: { configPath: safeJoin(wd.root, 'mcp.json'), allowedTools: ALLOWED_TOOLS } } : {}),
+          ...(pull ? { mcp: { configPath: safeJoin(wd.root, cli.mcpConfigFile), allowedTools: ALLOWED_TOOLS } } : {}),
           validate: (d) => parseJudgment(d, new Set(entries.map((e) => e.path))).reason,
         },
         JUDGMENT_SCHEMA,

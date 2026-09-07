@@ -137,13 +137,28 @@ interface RoutingRule {
 | `synthesis` | A등급 | ✅ 허용 | 위키에 남는 산문 |
 | `schema.propose` | A등급 | ❌ **금지** | 스키마가 틀리면 이후 전부가 틀어짐 |
 
-> **2026-09-05 정정.** Gemini 는 폴더 신뢰 게이트 때문에 내장 MCP 서버에 붙지 못합니다
+> **2026-09-05 정정.** Gemini 는 폴더 신뢰 게이트 때문에 내장 MCP 서버에 붙지 못했습니다
 > (`PLAN.md` §7.2 · `M2-PLAN.md` §12.2). 그래서 규칙에 `wikiAccess` 를 뒀습니다.
 >
 > - `query` · `synthesis` 는 `pull` — MCP 에 붙는 공급자로만 갑니다. 상한에 닿아도
 >   폴백하지 않고 **막습니다.** 위키를 안 읽고 아는 대로 답하는 것보다 낫습니다
 > - `lint.judgment` 는 `either` — 전수 스캔은 어차피 다 읽으므로 밀어 넣기로도 됩니다.
 >   실측에서 두 방식이 같은 문제를 잡았습니다 (`M2-PLAN.md` §13.1)
+
+> **2026-09-09 재정정.** 사용자가 사내 PC 의 **전역** Gemini 설정에
+> `security.folderTrust.enabled: false` 를 넣었습니다. 그래서 `MCP_CAPABLE` 에 Gemini 를
+> 넣었고 `query` · `synthesis` 가 상한에 닿으면 Gemini 로 넘어갑니다.
+>
+> **아직 왕복을 못 봤습니다.** 이 설정이 있는 기계가 사내에만 있습니다. 그래서 두 가지를
+> 같이 뒀습니다.
+>
+> - 어댑터가 `untrusted` 경고를 보면 **답이 와도 버립니다** (`agent/gemini.ts`
+>   `mcpDisabled`). 위키를 안 읽고 답한 것을 사람이 구별할 방법이 없어서입니다
+> - `lint.judgment` 는 `MCP_VERIFIED` 를 봅니다. 밀어 넣기로 이미 돌고 있어서
+>   확인 전에 경로를 갈아 끼우지 않습니다. 되던 것이 깨지는 손해가 더 큽니다
+>
+> 확인하는 법은 [`ROADMAP.md`](ROADMAP.md) §16 에 있습니다
+> (`spikes/cli/gemini-mcp-check.mjs`).
 
 **`schema.propose`만 폴백을 금지합니다.** 스키마는 다른 모든 작업의 계약이라 여기서 품질이
 떨어지면 손상이 전파됩니다.

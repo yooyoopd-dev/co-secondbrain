@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { CHANGESET_SCHEMA, schemaWithoutPattern } from '../src/core/agent/schema.ts';
+import { mcpConfig, SERVER_NAME } from '../src/core/mcp/config.ts';
 import { prepareWorkdir, disposeWorkdir } from '../src/core/agent/workdir.ts';
 import { BLOCKED_TOOLS, buildArgv, createClaudeCode, parseResult } from '../src/core/agent/claude-code.ts';
 import { addUsage, ZERO_USAGE, type Exec } from '../src/core/agent/types.ts';
@@ -411,6 +412,7 @@ import {
   buildArgv as gBuildArgv,
   createGemini,
   extract,
+  mcpDisabled,
   parseEnvelope,
   retryPrompt,
   stripFence as gStripFence,
@@ -610,7 +612,7 @@ test('A등급 — 프롬프트가 argv 가 아니라 stdin 으로 간다 (Window
 
 /* ================= 공급자 라우팅 (ROADMAP 6번) ================= */
 
-import { DEFAULT_ROUTING, MCP_CAPABLE, route, SCHEMA_ENFORCING, type TaskKind } from '../src/core/agent/router.ts';
+import { DEFAULT_ROUTING, MCP_CAPABLE, MCP_VERIFIED, route, SCHEMA_ENFORCING, type TaskKind } from '../src/core/agent/router.ts';
 
 const ALL: TaskKind[] = ['ingest.batch', 'ingest.single', 'lint.judgment', 'dedup.ambiguous', 'query', 'synthesis', 'schema.propose'];
 const both = { available: ['claude-code', 'gemini'] as const };
@@ -650,19 +652,26 @@ test('라우팅 — 상한에 닿으면 허용된 작업만 전환한다', () =>
   assert.equal(r.ok && r.fallback, true);
 });
 
-test('읽기 경로는 MCP 를 못 쓰는 공급자로 폴백하지 않는다', () => {
+test('읽기 경로는 MCP 에 못 붙는 공급자로 폴백하지 않는다', () => {
   // 폴백하면 위키를 안 읽고 아는 대로 답한다. 막히는 편이 낫다.
-  assert.ok(!MCP_CAPABLE.includes('gemini'));
+  // Codex 는 아직 확인 전이라 목록에 없다 — 없는 공급자로는 안 간다.
+  assert.ok(!MCP_CAPABLE.includes('codex'));
   for (const k of ['query', 'synthesis'] as TaskKind[]) {
     assert.equal(DEFAULT_ROUTING[k].wikiAccess, 'pull', k);
-    assert.equal(route(k, { ...both, overLimit: ['claude-code'] }).ok, false, k);
+    assert.equal(route(k, { available: ['claude-code', 'codex'], overLimit: ['claude-code'] }).ok, false, k);
   }
 });
 
-test('설정으로도 읽기 경로를 Gemini 에 못 넣는다', () => {
-  const r = route('query', { ...both, overrides: { query: 'gemini' } });
-  assert.equal(r.ok, false);
-  assert.match(r.ok === false ? r.reason : '', /내장 MCP 서버/);
+test('사내 전역 설정을 고친 뒤로 읽기 경로가 Gemini 로도 간다', () => {
+  // 2026-09-09 사용자가 `security.folderTrust.enabled: false` 를 넣었다 (ROADMAP §16)
+  assert.ok(MCP_CAPABLE.includes('gemini'));
+  assert.equal(route('query', { ...both, overrides: { query: 'gemini' } }).ok, true);
+  assert.equal(route('query', { ...both, overLimit: ['claude-code'] }).ok, true);
+});
+
+test('lint 는 확인된 공급자로만 당겨 간다 — 되던 밀어 넣기를 안 바꾼다', () => {
+  assert.ok(MCP_VERIFIED.includes('claude-code'));
+  assert.ok(!MCP_VERIFIED.includes('gemini'));
 });
 
 test('라우팅 — schema.propose 는 전환하지 않고 막는다. 스키마가 틀리면 이후 전부가 틀어진다', () => {
@@ -776,4 +785,50 @@ test('exec — 이미 취소된 신호면 아예 안 띄운다', async () => {
   const r = await realExec(process.execPath, ['-e', 'process.exit(0)'], { ...NODE_OPTS, signal: AbortSignal.abort() });
   assert.equal(r.code, -2);
   assert.equal(r.stdout, '');
+});
+
+/* ---------------- Gemini + MCP (2026-09-09) ---------------- */
+
+test('gemini — MCP 를 쓸 때만 서버 이름을 좁힌다', () => {
+  assert.ok(!gBuildArgv(false).includes('--allowed-mcp-server-names'));
+  const withMcp = gBuildArgv(true);
+  assert.ok(withMcp.includes('--allowed-mcp-server-names'));
+  // 사내 PC 에 이미 등록된 서버가 우리 호출까지 망가뜨린 적이 있다
+  assert.equal(withMcp[withMcp.indexOf('--allowed-mcp-server-names') + 1], SERVER_NAME);
+});
+
+test('gemini — 신뢰 게이트가 MCP 를 껐으면 답이 와도 버린다', async () => {
+  // 위키를 안 읽고 답한 것을 사람이 구별할 방법이 없다. 여기서 막는다.
+  const stderr = 'Warning: MCP servers are configured but disabled because this folder is untrusted.';
+  assert.equal(mcpDisabled(stderr), true);
+  assert.equal(mcpDisabled('그냥 경고'), false);
+
+  const exec: Exec = async () => ({ stdout: envelope(OK_CS), stderr, code: 0 });
+  const r = await createGemini(exec).run(
+    { workdir: '/tmp', prompt: '묻는다', mcp: { configPath: '/tmp/.gemini/settings.json', allowedTools: [] } },
+    {},
+  );
+  assert.equal(r.ok, false);
+  assert.match(r.error ?? '', /folderTrust/);
+});
+
+test('gemini — MCP 를 안 쓰는 호출은 그 경고를 봐도 그냥 간다', async () => {
+  // 밀어 넣기 경로(lint)는 MCP 가 필요 없다. 경고 하나로 막으면 되던 것이 깨진다.
+  const exec: Exec = async () => ({ stdout: envelope(OK_CS), stderr: 'MCP servers ... untrusted', code: 0 });
+  const r = await createGemini(exec).run({ workdir: '/tmp', prompt: '넣는다' }, {});
+  assert.equal(r.ok, true, r.error);
+});
+
+test('MCP 설정을 놓는 자리가 CLI 마다 다르다', () => {
+  assert.equal(createClaudeCode(async () => ({ stdout: '', stderr: '', code: 0 })).mcpConfigFile, 'mcp.json');
+  // Gemini 에는 `--mcp-config` 가 없다. cwd 의 프로젝트 설정만 읽는다 (2026-09-09 실측)
+  assert.equal(createGemini(async () => ({ stdout: '', stderr: '', code: 0 })).mcpConfigFile, '.gemini/settings.json');
+});
+
+test('trust 는 Gemini 설정에만 붙는다', () => {
+  const launch = { command: 'node', args: ['s.js'] };
+  const plain = mcpConfig(launch) as { mcpServers: Record<string, Record<string, unknown>> };
+  const trusted = mcpConfig(launch, true) as { mcpServers: Record<string, Record<string, unknown>> };
+  assert.equal('trust' in plain.mcpServers[SERVER_NAME]!, false);
+  assert.equal(trusted.mcpServers[SERVER_NAME]!['trust'], true);
 });
