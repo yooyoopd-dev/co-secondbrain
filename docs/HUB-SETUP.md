@@ -294,6 +294,18 @@ NODE=$(sudo -u co-hub sh -c 'command -v node')
 sudo -u co-hub $NODE /srv/co-hub/dist/main.js /srv/co-hub/config.json
 ```
 
+`EADDRINUSE: address already in use 0.0.0.0:8787` 이 나오면 8787 을 이미 누가
+잡고 있습니다. 대개 앞서 켠 허브가 그대로 살아 있는 것입니다. 누구인지 봅니다.
+
+```bash
+sudo ss -ltnp | grep 8787
+systemctl status co-hub --no-pager
+```
+
+`co-hub` 서비스면 이미 떠 있는 것이니 이 절은 건너뛰고 아래 `curl` 로 확인만 하고
+8번으로 갑니다. 앞서 손으로 띄운 것이 안 죽은 것이면 그 PID 를 끕니다. 남이면
+`config.json` 의 `port` 를 바꾸고 방화벽(8번)도 같이 고칩니다.
+
 이렇게 나오면 뜬 것입니다.
 
 ```
@@ -401,6 +413,7 @@ journalctl -u co-hub -n 50 --no-pager
 | 시스템 전체에 깔았는데도 `command not found` | 경로를 찍은 것이 틀렸습니다. apt 는 `/usr/bin`, tarball 은 `/usr/local/bin` 입니다. `sudo -u co-hub sh -c 'command -v node'` 로 물어봅니다 |
 | `sudo: unable to execute .../node: Permission denied` | Node 가 남의 홈(nvm) 안에 있습니다. `co-hub` 계정이 못 읽습니다. 시스템 전체에 다시 깝니다 (2번) |
 | 바로 죽는다 | Node 판을 봅니다. `node -e "require('node:sqlite')"` |
+| `EADDRINUSE ... 0.0.0.0:8787` | 8787 을 이미 누가 잡고 있습니다. `sudo ss -ltnp \| grep 8787` 로 봅니다 (6번) |
 | 켜지는데 못 붙는다 | 방화벽과 `bind`. `0.0.0.0` 이어야 밖에서 붙습니다 |
 | `ExperimentalWarning: SQLite` | 정상입니다. Node 22 가 `node:sqlite` 에 붙이는 경고입니다 |
 | 쓰기가 실패한다 | `ReadWritePaths` 와 `/srv/co-hub` 소유자 |
