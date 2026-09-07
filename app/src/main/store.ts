@@ -29,6 +29,8 @@ import { conventionFile, promptFor, type WikiRef } from '../core/agent/ingest.ts
 import { ALLOWED_TOOLS, mcpConfig, type McpLaunch } from '../core/mcp/config.ts';
 import { ANSWER_SCHEMA, parseAnswer, questionPrompt, toChangeSet, type Answer } from '../core/query.ts';
 import { JUDGMENT_SCHEMA, judgmentPrompt, judgmentPromptPush, parseJudgment, summarizeJudgment, type ParsedJudgment } from '../core/lint/judgment.ts';
+import { lint, type LintReport } from '../core/lint/index.ts';
+import { readRejected, reject, toKeys, unreject, type RejectedPair } from '../core/lint/rejected.ts';
 import { toMarp } from '../core/marp.ts';
 import { estimateScan, type ScanEstimate } from '../core/tokens.ts';
 import { disposeWorkdir, prepareWorkdir } from '../core/agent/workdir.ts';
@@ -474,6 +476,35 @@ export class Store {
     } finally {
       await disposeWorkdir(wd);
     }
+  }
+
+  /* ---------- Lint 계산 검사 7종 (PLAN.md §4) ---------- */
+
+  /**
+   * LLM 없이 도는 검사 일곱 가지. 언제 불러도 되고 돈이 안 든다.
+   *
+   * #9(엔티티 중복 후보)는 **사람이 이미 거부한 쌍을 뺀다.** 한 번 "다른 대상" 이라고
+   * 한 것을 매번 다시 물으면 사람이 Lint 를 통째로 무시하게 된다 (ROADMAP.md §14).
+   */
+  async lintComputed(): Promise<LintReport> {
+    const v = this.#require();
+    const { entries } = await readWikiPages(v);
+    return lint(entries.map((e) => e.page), await this.#anchors(), toKeys(await readRejected(v)));
+  }
+
+  /** 중복 후보 하나를 "다른 대상" 으로 기록한다. 거부 하나가 오병합 표본 하나다 */
+  async rejectDuplicate(a: string, b: string): Promise<RejectedPair[]> {
+    return reject(this.#require(), a, b);
+  }
+
+  /** 잘못 누른 것을 무른다. 파일을 손으로 고치게 하면 안 된다 */
+  async unrejectDuplicate(a: string, b: string): Promise<RejectedPair[]> {
+    return unreject(this.#require(), a, b);
+  }
+
+  /** 지금까지 거부한 쌍. 누적 개수가 곧 오병합 건수다 (W5) */
+  async rejectedDuplicates(): Promise<RejectedPair[]> {
+    return readRejected(this.#require());
   }
 
   /* ---------- Lint 판단 검사 4종 (PLAN.md §4) ---------- */

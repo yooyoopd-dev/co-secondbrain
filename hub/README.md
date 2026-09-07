@@ -1,6 +1,7 @@
 # CO-Hub — 사내 동기화 서버
 
-설계는 [`docs/HUB.md`](../docs/HUB.md). 이 문서는 돌리는 법만 적는다.
+설계는 [`docs/HUB.md`](../docs/HUB.md), 처음부터 올리는 절차는
+[`docs/HUB-SETUP.md`](../docs/HUB-SETUP.md). 이 문서는 돌리는 법만 적는다.
 
 **런타임 의존성이 없다.** `node:sqlite` 와 `node:http` 만 쓴다. 사내 오프라인 설치에서
 의존성 하나가 곧 배포 비용이다.

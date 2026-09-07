@@ -22,6 +22,9 @@ import ReviewOverlay from './Review.tsx';
 import SyncPanel from './Sync.tsx';
 import DebugPanel from './Debug.tsx';
 import { CoreContextPanel, SettingsPanel } from './Settings.tsx';
+import { DedupButton, DedupPanel } from './Dedup.tsx';
+import type { Finding } from '../core/lint/index.ts';
+import type { RejectedPair } from '../core/lint/rejected.ts';
 import { Icon } from './icons.tsx';
 
 declare global {
@@ -63,6 +66,8 @@ export default function App() {
   // 넣을 때 고르는 열람 등급. 기본은 사내다 — 공개를 기본으로 두면 실수가 유출이 된다
   const [classification, setClassification] = useState<Classification>(DEFAULT_CLASSIFICATION);
   const [inbox, setInbox] = useState<InboxItem[]>([]);
+  // 중복 후보. 열 때 계산 검사 #9 를 다시 돌린다 — 돈이 안 들어 캐시할 이유가 없다.
+  const [dedup, setDedup] = useState<{ candidates: Finding[]; rejected: RejectedPair[] } | null>(null);
   // 설정과 내 맥락. 정본은 main(과 Vault 의 파일)이고 화면은 사본을 그린다
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [core, setCore] = useState<CoreContext>(EMPTY_CORE_CONTEXT);
@@ -359,6 +364,43 @@ export default function App() {
     setCoreOpen(true);
   };
 
+  /* 중복 후보 — 계산 검사 #9. LLM 을 안 부르므로 열 때마다 다시 돌린다 */
+
+  const loadDedup = async () => ({
+    candidates: (await window.sb.lintComputed()).findings.filter((f) => f.check === 9),
+    rejected: await window.sb.rejectedDuplicates(),
+  });
+
+  const openDedup = async () => {
+    setBusy(true);
+    try {
+      setDedup(await loadDedup());
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** 거부하면 그 쌍이 후보에서 빠진다. 목록을 다시 읽어 바로 보인다 */
+  const rejectDup = async (a: string, b: string) => {
+    setBusy(true);
+    try {
+      await window.sb.rejectDuplicate(a, b);
+      setDedup(await loadDedup());
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const unrejectDup = async (a: string, b: string) => {
+    setBusy(true);
+    try {
+      await window.sb.unrejectDuplicate(a, b);
+      setDedup(await loadDedup());
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const saveCore = async (ctx: CoreContext) => {
     setBusy(true);
     try {
@@ -430,6 +472,7 @@ export default function App() {
         spend={spend}
         pending={pending}
         onLint={async () => setEstimate(await window.sb.estimateJudgment())}
+        onDedup={() => void openDedup()}
         onExport={exportDeck}
         hub={hub}
         onSync={openSync}
@@ -496,6 +539,16 @@ export default function App() {
       )}
       {coreOpen && (
         <CoreContextPanel value={core} busy={busy} onSave={(c) => void saveCore(c)} onClose={() => setCoreOpen(false)} />
+      )}
+      {dedup && (
+        <DedupPanel
+          candidates={dedup.candidates}
+          rejected={dedup.rejected}
+          busy={busy}
+          onReject={(a, b) => void rejectDup(a, b)}
+          onUnreject={(a, b) => void unrejectDup(a, b)}
+          onClose={() => setDedup(null)}
+        />
       )}
       {debugOverlay}
     </div>
@@ -576,6 +629,7 @@ function Rail({
   spend,
   pending,
   onLint,
+  onDedup,
   onExport,
   hub,
   onSync,
@@ -597,6 +651,7 @@ function Rail({
   spend: Status[];
   pending: number | null;
   onLint: () => void;
+  onDedup: () => void;
   onExport: () => void;
   hub: HubStatus | null;
   onSync: () => void;
@@ -645,6 +700,10 @@ function Rail({
           <button style={{ flex: 1 }} disabled={busy} onClick={onExport} title="Marp 슬라이드로 내보내기">
             슬라이드
           </button>
+        </div>
+        {/* 중복 후보는 돈이 안 드는 계산 검사라 판단 검사와 줄을 나눈다 */}
+        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+          <DedupButton count={null} busy={busy} onClick={onDedup} />
         </div>
         {/* 충돌은 사람이 먼저 알아야 한다. 설정 안에 묻어 두지 않고 여기 띄운다 */}
         {hub && !hub.personal && hub.conflicts > 0 && (

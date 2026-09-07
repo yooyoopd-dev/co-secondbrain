@@ -204,3 +204,90 @@ test('모든 지적에 사람이 할 일이 붙는다', () => {
   assert.ok(r.findings.length > 0);
   for (const f of r.findings) assert.ok(f.fix.length > 0, JSON.stringify(f));
 });
+
+/* ---------------- #9 거부를 기억한다 (ROADMAP.md §14) ---------------- */
+
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { createVault } from '../src/core/vault.ts';
+import {
+  NO_REJECTIONS,
+  REJECTED_PATH,
+  readRejected,
+  reject,
+  rejectionKey,
+  toKeys,
+  unreject,
+} from '../src/core/lint/rejected.ts';
+
+const tmpVault = async () =>
+  createVault(await fs.mkdtemp(path.join(os.tmpdir(), 'sb-rej-')), { id: 'personal', title: '개인 Vault', hub: null });
+
+test('#9 거부 — 열쇠는 표기와 순서를 안 탄다', () => {
+  // 정규화하고 사전순으로 세우므로 어느 쪽을 먼저 골랐어도 같은 거부다.
+  assert.equal(rejectionKey('에이콤(주)', '한빛소재'), rejectionKey('한빛소재', '에이콤 주식회사'));
+  assert.notEqual(rejectionKey('가나다', '라마바'), rejectionKey('가나다', '사아자'));
+});
+
+test('#9 거부 — 거부한 쌍은 후보에서 빠진다', () => {
+  const labels = [
+    { id: 'a', label: '한빛소재' },
+    { id: 'b', label: '한빛소재㈜' },
+  ];
+  assert.equal(findDuplicates(labels).length, 1, '거부 전에는 후보다');
+  assert.equal(findDuplicates(labels, undefined, toKeys([{ a: '한빛소재', b: '한빛소재㈜', at: '' }])).length, 0);
+  assert.equal(findDuplicates(labels, undefined, NO_REJECTIONS).length, 1);
+});
+
+test('#9 거부 — lint 가 거부를 받아 넘긴다', () => {
+  const pages = [
+    page('ent-a', '한빛소재', { body: '\n한 문장.[^src-kickoff#slide-1]\n' }),
+    page('ent-b', '한빛소재㈜', { body: '\n한 문장.[^src-kickoff#slide-1]\n' }),
+  ];
+  assert.equal(lint(pages, ANCHORS).counts[9], 1);
+  assert.equal(lint(pages, ANCHORS, toKeys([{ a: '한빛소재', b: '한빛소재㈜', at: '' }])).counts[9], 0);
+});
+
+test('#9 거부 — 파일로 남고 되읽힌다. 두 번 눌러도 하나다', async () => {
+  const v = await tmpVault();
+  await reject(v, '구매팀', '구매팀장');
+  await reject(v, '구매팀장', '구매팀'); // 순서를 바꿔 또 눌러도 같은 쌍이다
+  const pairs = await readRejected(v);
+  assert.equal(pairs.length, 1);
+  assert.equal(pairs[0]!.a, '구매팀', '사람이 보던 이름 그대로 남는다');
+  assert.ok(pairs[0]!.at, '언제 눌렀는지 남는다');
+});
+
+test('#9 거부 — 무를 수 있다. 파일을 손으로 고치게 하지 않는다', async () => {
+  const v = await tmpVault();
+  await reject(v, '가나다', '가나라');
+  assert.equal((await unreject(v, '가나라', '가나다')).length, 0);
+  assert.equal((await readRejected(v)).length, 0);
+});
+
+test('#9 거부 — 깨진 파일 때문에 Lint 가 멎지 않는다', async () => {
+  const v = await tmpVault();
+  await fs.writeFile(path.join(v.root, REJECTED_PATH), '{ 깨진', 'utf8');
+  assert.deepEqual(await readRejected(v), []);
+});
+
+test('#9 거부 — 자리가 `.sb/` 다. 동기화가 안 올린다', () => {
+  // sync/engine.ts scanLocal 은 02_NOTES/ 아래만 올린다. 여기가 옮겨 가면 CO 영역에서
+  // 개인의 판단이 동료에게 간다. 이름이 들어 있는 파일이다.
+  assert.equal(REJECTED_PATH.startsWith('.sb/'), true);
+});
+
+test('#9 후보에 제목이 붙는다 — 화면이 id 를 보여주면 안 된다', () => {
+  const r = lint(
+    [
+      page('ent-a', '한빛소재', { body: '\n한 문장.[^src-kickoff#slide-1]\n' }),
+      page('ent-b', '한빛소재㈜', { body: '\n한 문장.[^src-kickoff#slide-1]\n' }),
+    ],
+    ANCHORS,
+  );
+  const f = r.findings.find((x) => x.check === 9)!;
+  assert.deepEqual([...f.labels!].sort(), ['한빛소재', '한빛소재㈜']);
+  // 거부는 이름으로 저장한다. 화면이 id 를 이름으로 되짚을 필요가 없다.
+  assert.equal(rejectionKey(f.labels![0], f.labels![1]), rejectionKey('한빛소재㈜', '한빛소재'));
+});

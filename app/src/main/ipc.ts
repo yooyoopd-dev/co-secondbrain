@@ -7,6 +7,8 @@ import type { WorkPlan } from '../core/cache.ts';
 import type { Status } from '../core/spend.ts';
 import type { Answer } from '../core/query.ts';
 import type { ParsedJudgment } from '../core/lint/judgment.ts';
+import type { LintReport } from '../core/lint/index.ts';
+import type { RejectedPair } from '../core/lint/rejected.ts';
 import type { ScanEstimate } from '../core/tokens.ts';
 import type { SyncConflict, SyncReport } from '../core/sync/index.ts';
 import type { LogEntry } from '../core/log.ts';
@@ -128,6 +130,14 @@ export interface SbApi {
   /** 실행 전에 보여줄 예상 비용 */
   estimateJudgment(): Promise<ScanEstimate>;
   /** Lint 판단 검사 4종. 제안일 뿐 자동으로 고치지 않는다 */
+  /** LLM 없이 도는 검사 일곱 가지. 돈이 안 들어 언제 불러도 된다 */
+  lintComputed(): Promise<LintReport>;
+  /** 중복 후보 하나를 "다른 대상" 으로 기록한다. 다음부터 안 뜬다 */
+  rejectDuplicate(a: string, b: string): Promise<RejectedPair[]>;
+  /** 잘못 누른 거부를 무른다 */
+  unrejectDuplicate(a: string, b: string): Promise<RejectedPair[]>;
+  /** 거부한 쌍 전부. 누적 개수가 곧 오병합 건수다 */
+  rejectedDuplicates(): Promise<RejectedPair[]>;
   lintJudgment(): Promise<JudgmentResult>;
   /** Marp 덱을 파일로 저장한다. 저장한 경로를 돌려주고, 취소하면 null */
   exportDeck(): Promise<string | null>;
@@ -183,6 +193,10 @@ export const IPC = {
   ask: 'sb:ask',
   archiveAnswer: 'sb:archiveAnswer',
   estimateJudgment: 'sb:estimateJudgment',
+  lintComputed: 'sb:lintComputed',
+  rejectDuplicate: 'sb:rejectDuplicate',
+  unrejectDuplicate: 'sb:unrejectDuplicate',
+  rejectedDuplicates: 'sb:rejectedDuplicates',
   lintJudgment: 'sb:lintJudgment',
   exportDeck: 'sb:exportDeck',
   hubStatus: 'sb:hubStatus',

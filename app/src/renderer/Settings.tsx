@@ -149,7 +149,7 @@ export function CoreContextPanel({
 
 /* ---------- 공통 껍데기 ---------- */
 
-function Shell({
+export function Shell({
   title,
   version,
   busy,

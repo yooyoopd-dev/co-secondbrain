@@ -22,9 +22,12 @@
 ## 2. 배포
 
 ```
-Node 20+ / Fastify / better-sqlite3 / 파일시스템 blob store
-단일 프로세스. 외부 DB 없음.
+Node 22.22.2 (실측) / node:http / node:sqlite / 파일시스템 blob store
+단일 프로세스. 외부 DB 없음. **런타임 의존성 없음.**
 ```
+
+계획 단계에서는 Fastify 와 better-sqlite3 를 적어 뒀는데 안 씁니다. 사내 오프라인
+설치에서 의존성 하나가 곧 배포 비용이라 Node 표준 모듈만으로 갔습니다.
 
 ```
 /srv/co-hub/
@@ -32,8 +35,12 @@ Node 20+ / Fastify / better-sqlite3 / 파일시스템 blob store
 ├─ blobs/
 │   └─ 9f/2a/9f2a3c...            # sha256 앞 4자리로 분산
 ├─ config.json
-└─ server.js
+├─ dist/
+│   └─ main.js
+└─ deploy/
 ```
+
+**설치 절차는 [`HUB-SETUP.md`](HUB-SETUP.md) 에 있습니다.**
 
 **허브는 최신 Ubuntu 리눅스 PC에서 돕니다** (2026-09-05 확인). 클라이언트만 Windows입니다.
 
@@ -46,7 +53,7 @@ Node 20+ / Fastify / better-sqlite3 / 파일시스템 blob store
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/node /srv/co-hub/server.js
+ExecStart=/usr/bin/node /srv/co-hub/dist/main.js /srv/co-hub/config.json
 WorkingDirectory=/srv/co-hub
 Restart=always
 User=co-hub
@@ -61,12 +68,14 @@ WantedBy=multi-user.target
 ```json
 {
   "bind": "0.0.0.0",
-  "port": 7777,
-  "dataDir": "C:\\co-hub",
-  "tls": null,
-  "maxBlobBytes": 268435456
+  "port": 8787,
+  "dataDir": "/srv/co-hub",
+  "adminKey": "여기에-공백-없는-ASCII-비밀을-넣으십시오"
 }
 ```
+
+`adminKey` 는 **공백 없는 ASCII** 여야 합니다. `X-Admin-Key` 헤더로 오는데 HTTP 헤더
+값이 ASCII 만 받습니다. 서버가 켜질 때 걸러 줍니다.
 
 ---
 

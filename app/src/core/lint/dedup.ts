@@ -107,6 +107,11 @@ export function jaroWinkler(a: string, b: string, p = 0.1): number {
 export function findDuplicates(
   labels: readonly { id: string; label: string; aliases?: readonly string[] }[],
   sameCommunity?: (a: string, b: string) => boolean,
+  /**
+   * 사람이 "다른 대상이다" 라고 한 쌍의 열쇠 집합 (`lint/rejected.ts`). 여기 있으면 안
+   * 띄운다. **한 번 판정한 것을 매번 다시 묻지 않는다** — 그러면 Lint 를 통째로 무시하게 된다.
+   */
+  rejected?: ReadonlySet<string>,
 ): DedupCandidate[] {
   const usable = labels.filter((x) => passesGate(x.label));
   const out: DedupCandidate[] = [];
@@ -122,6 +127,8 @@ export function findDuplicates(
 
       const kx = normalizeLabel(x.label);
       const ky = normalizeLabel(y.label);
+      // 거부한 쌍은 점수를 재기 전에 뺀다. 열쇠는 `rejected.ts` 의 `rejectionKey` 와 같다.
+      if (rejected?.has([kx, ky].sort().join('\t'))) continue;
       const score = kx === ky ? 1 : jaroWinkler(kx, ky);
       if (score >= SIMILARITY_THRESHOLD) {
         out.push({ a: x.id, b: y.id, score, sameCommunity: sameCommunity?.(x.id, y.id) ?? false });

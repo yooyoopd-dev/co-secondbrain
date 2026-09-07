@@ -173,6 +173,10 @@ function registerIpc(): void {
   handle(IPC.ask, (_e, q: string) => store.ask(q));
   handle(IPC.archiveAnswer, (_e, q: string, a: Answer) => store.archiveAnswer(q, a));
   handle(IPC.estimateJudgment, () => store.estimateJudgment());
+  handle(IPC.lintComputed, () => store.lintComputed());
+  handle(IPC.rejectDuplicate, (_e, a: string, b: string) => store.rejectDuplicate(a, b));
+  handle(IPC.unrejectDuplicate, (_e, a: string, b: string) => store.unrejectDuplicate(a, b));
+  handle(IPC.rejectedDuplicates, () => store.rejectedDuplicates());
   handle(IPC.lintJudgment, () => store.lintJudgment());
 
   // 동기화 — 충돌은 디스크를 안 건드린다. 병합 결과만 다시 올라간다 (HUB.md §5)
