@@ -239,7 +239,8 @@ Windows가 못 띄웁니다. 같은 결함이 제품 코드(`core/agent/exec.ts`
 ### 받아 쓰는 법
 
 [릴리스](https://github.com/yooyoopd-dev/co-secondbrain/releases/latest)에서
-`co-secondbrain-<판>-portable.exe` 하나를 받아 두 번 누르십시오. 설치하지 않습니다.
+`co-secondbrain-<판>-portable.exe` 하나를 받아 두 번 누르십시오. 지금 판은 **v0.9.0-beta**
+입니다. 설치하지 않습니다.
 사내 PC 에 설치 권한이 없어도 됩니다. 새 판이 나오면 이전 판 exe 는 지웁니다 —
 목록에서 옛 파일을 집어 가는 일을 막습니다.
 
