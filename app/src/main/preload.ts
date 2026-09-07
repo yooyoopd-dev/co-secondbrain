@@ -16,6 +16,17 @@ contextBridge.exposeInMainWorld('sb', {
   propose: (id: string) => ipcRenderer.invoke(IPC.propose, id),
   applyReview: (approved: string[]) => ipcRenderer.invoke(IPC.applyReview, approved),
   discardReview: () => ipcRenderer.invoke(IPC.discardReview),
+  holdReview: (approved: string[]) => ipcRenderer.invoke(IPC.holdReview, approved),
+  heldReview: () => ipcRenderer.invoke(IPC.heldReview),
+  resumeReview: () => ipcRenderer.invoke(IPC.resumeReview),
+  cancelAgent: () => ipcRenderer.invoke(IPC.cancelAgent),
+  // 유일한 밀어 주기 채널. 나머지는 전부 렌더러가 물어본다.
+  agentOutput: (cb: (chunk: string) => void) => {
+    const on = (_e: unknown, chunk: string) => cb(chunk);
+    ipcRenderer.on(IPC.agentOutput, on);
+    return () => ipcRenderer.removeListener(IPC.agentOutput, on);
+  },
+  taskProviders: () => ipcRenderer.invoke(IPC.taskProviders),
   editOp: (path: string, content: string) => ipcRenderer.invoke(IPC.editOp, path, content),
   spendStatus: () => ipcRenderer.invoke(IPC.spendStatus),
   plan: () => ipcRenderer.invoke(IPC.plan),

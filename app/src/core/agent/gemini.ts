@@ -198,7 +198,9 @@ export function createGemini(exec: Exec = realExec): AgentCli {
 
       const call = async (prompt: string) => {
         try {
-          const r = await exec(BIN, buildArgv(), { cwd: job.workdir, env: process.env, stdin: prompt });
+          const r = await exec(BIN, buildArgv(), {
+            cwd: job.workdir, env: process.env, stdin: prompt, onOutput: job.onOutput, signal: job.signal,
+          });
           const env = parseEnvelope(r.stdout, r.stderr);
           usage = addUsage(usage, env.usage);
           return { ...r, env };

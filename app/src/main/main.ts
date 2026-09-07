@@ -164,13 +164,21 @@ function registerIpc(): void {
   handle(IPC.readSource, (_e, id: string) => store.readSource(id));
 
   // 관문 8 — 제안은 디스크를 건드리지 않는다. 적용만 쓴다.
-  handle(IPC.propose, (_e, id: string) => store.propose(id));
+  // CLI 가 뱉는 것은 부른 창으로 되돌려 보낸다. 창을 따로 붙들지 않는다.
+  handle(IPC.propose, (e, id: string) =>
+    store.propose(id, { onOutput: (chunk) => e.sender.send(IPC.agentOutput, chunk) }),
+  );
   handle(IPC.applyReview, (_e, approved: string[]) => store.applyReview(approved));
   handle(IPC.discardReview, () => store.discardReview());
+  handle(IPC.holdReview, (_e, approved: string[]) => store.holdReview(approved));
+  handle(IPC.heldReview, () => store.heldReviewInfo());
+  handle(IPC.resumeReview, () => store.resumeReview());
+  handle(IPC.cancelAgent, () => store.cancelAgent());
+  handle(IPC.taskProviders, () => store.taskProviders());
   handle(IPC.editOp, (_e, path: string, content: string) => store.editOp(path, content));
   handle(IPC.spendStatus, () => store.spendStatus());
   handle(IPC.plan, () => store.plan());
-  handle(IPC.ask, (_e, q: string) => store.ask(q));
+  handle(IPC.ask, (e, q: string) => store.ask(q, { onOutput: (chunk) => e.sender.send(IPC.agentOutput, chunk) }));
   handle(IPC.archiveAnswer, (_e, q: string, a: Answer) => store.archiveAnswer(q, a));
   handle(IPC.estimateJudgment, () => store.estimateJudgment());
   handle(IPC.lintComputed, () => store.lintComputed());

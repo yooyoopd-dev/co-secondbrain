@@ -96,7 +96,7 @@ const levels = ['--bg-canvas', '--bg-surface', '--bg-raised'].map((n) => lum(hex
 ok('표면이 위로 갈수록 밝다', levels[0] < levels[1] && levels[1] < levels[2], levels.map((l) => l.toFixed(3)));
 
 // diff 배경은 색만으로 구분하지 않지만, 그래도 흰 카드와 구별돼야 한다
-for (const name of ['--ok-wash', '--danger-wash', '--info-wash']) {
+for (const name of ['--ok-wash', '--danger-wash', '--info-wash', '--warn-wash']) {
   const r = ratio(T.get(name), '#ffffff');
   ok(`${name} 이 흰 카드와 구별된다`, r > 1.03, r.toFixed(3));
 }

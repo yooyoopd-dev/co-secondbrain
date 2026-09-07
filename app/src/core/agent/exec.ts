@@ -54,6 +54,10 @@ export const realExec: Exec = (bin, argv, opts) =>
       reject(new Error(`${bin} 은 cmd 껍데기(${target.path})로만 있습니다. 인자가 깨지므로 띄우지 않습니다`));
       return;
     }
+    if (opts.signal?.aborted) {
+      resolve({ stdout: '', stderr: '사람이 취소했습니다', code: -2 });
+      return;
+    }
     const p = spawn(target.path, argv as string[], {
       cwd: opts.cwd,
       env: opts.env,
@@ -68,8 +72,16 @@ export const realExec: Exec = (bin, argv, opts) =>
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      opts.signal?.removeEventListener('abort', onAbort);
       resolve(r);
     };
+
+    // 취소는 실패가 아니다. 부르는 쪽이 signal.aborted 로 사유를 구분한다.
+    const onAbort = () => {
+      p.kill('SIGKILL');
+      done({ stdout, stderr: `${stderr}\n사람이 취소했습니다`, code: -2 });
+    };
+    opts.signal?.addEventListener('abort', onAbort, { once: true });
     // 죽이는 것과 포기하는 것을 나눈다. SIGKILL 을 보내도 close 가 안 오는 경우를 봤다.
     const timer = setTimeout(() => {
       p.kill('SIGKILL');
@@ -78,10 +90,17 @@ export const realExec: Exec = (bin, argv, opts) =>
       done({ stdout, stderr: `${stderr}\n${TIMEOUT_MS / 1000}초 안에 응답이 없어 포기했습니다`, code: -1 });
     }, TIMEOUT_MS);
 
-    p.stdout.on('data', (c: Buffer) => (stdout += c));
-    p.stderr.on('data', (c: Buffer) => (stderr += c));
+    p.stdout.on('data', (c: Buffer) => {
+      stdout += c;
+      opts.onOutput?.(String(c), 'stdout');
+    });
+    p.stderr.on('data', (c: Buffer) => {
+      stderr += c;
+      opts.onOutput?.(String(c), 'stderr');
+    });
     p.on('error', (e) => {
       clearTimeout(timer);
+      opts.signal?.removeEventListener('abort', onAbort);
       if (!settled) {
         settled = true;
         reject(e);

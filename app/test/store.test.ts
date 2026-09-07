@@ -167,3 +167,84 @@ test('내 맥락은 안 적었으면 빈 것이고, 적으면 Vault 안 파일�
   assert.match(md, /구매팀 대리\./);
   assert.deepEqual(await s.coreContext(), { who: '구매팀 대리.', why: '', output: '근거 딸린 한 문단.' });
 });
+
+/* ---------- 전체 보류 (검토 화면) ---------- */
+
+/** CLI 를 안 부르고 검토 대기를 만든다. archiveAnswer 가 답변을 그대로 ChangeSet 으로 만든다 */
+async function withPending() {
+  const { s, root } = await opened();
+  await s.ingest([f('kickoff.docx')]);
+  const review = await s.archiveAnswer('킥오프 일정은?', {
+    answer: '3월 착수로 확정했습니다.',
+    claims: [{ text: '3월 착수로 확정', source: 'src-kickoff#2026 ACME 프로젝트' }],
+    pages: [],
+  });
+  return { s, root, review };
+}
+
+test('전체 보류하면 파일로 남고 다시 열린다', async () => {
+  const { s, root, review } = await withPending();
+  const p = review.ops[0]!.op.path;
+
+  await s.holdReview([p]);
+  // 보류는 `.sb/` 아래다. 위키에도 동기화 대상에도 안 들어간다.
+  assert.ok((await fs.stat(path.join(root, '.sb/held-review.json'))).isFile());
+  // 보류했으면 지금 검토 중인 것은 없다
+  await assert.rejects(() => s.editOp(p, '아무거나'), /검토 중인 변경안이 없습니다/);
+
+  const info = await s.heldReviewInfo();
+  assert.equal(info?.ops, 1);
+
+  const back = await s.resumeReview();
+  assert.deepEqual(back?.approved, [p]);
+  assert.equal(back?.review.ops.length, 1);
+  s.close();
+});
+
+test('보류한 것은 적용해도 버려도 사라진다', async () => {
+  const { s, root, review } = await withPending();
+  const p = review.ops[0]!.op.path;
+  const held = path.join(root, '.sb/held-review.json');
+
+  await s.holdReview([p]);
+  await s.discardReview();
+  assert.equal(await s.heldReviewInfo(), null);
+  await assert.rejects(() => fs.stat(held));
+
+  // 적용 쪽도 같다 — 적용했는데 다음에 또 뜨면 안 된다
+  const again = await s.archiveAnswer('킥오프 일정은?', {
+    answer: '3월 착수로 확정했습니다.',
+    claims: [{ text: '3월 착수로 확정', source: 'src-kickoff#2026 ACME 프로젝트' }],
+    pages: [],
+  });
+  await s.holdReview([again.ops[0]!.op.path]);
+  await s.resumeReview();
+  const res = await s.applyReview([again.ops[0]!.op.path]);
+  assert.equal(res.applied.length, 1, JSON.stringify(res));
+  await assert.rejects(() => fs.stat(held));
+  s.close();
+});
+
+test('보류 파일이 깨져 있으면 없는 것으로 본다', async () => {
+  const { s, root } = await opened();
+  await fs.writeFile(path.join(root, '.sb/held-review.json'), '{ JSON 아님', 'utf8');
+  assert.equal(await s.heldReviewInfo(), null);
+  assert.equal(await s.resumeReview(), null);
+  s.close();
+});
+
+test('도는 것이 없으면 취소는 false 다', async () => {
+  const { s } = await opened();
+  assert.equal(s.cancelAgent(), false);
+  s.close();
+});
+
+test('작업별 공급자를 미리 알려 준다', async () => {
+  const { s } = await opened();
+  const t = await s.taskProviders();
+  // 설치 여부는 이 기계에 달렸다. 모양만 본다 — 거절이면 사유가 있어야 한다.
+  for (const p of [t.query, t.ingest]) {
+    assert.ok(p.ok ? p.provider.length > 0 : p.reason.length > 0, JSON.stringify(p));
+  }
+  s.close();
+});

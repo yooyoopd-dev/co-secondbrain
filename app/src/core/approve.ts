@@ -31,19 +31,41 @@ export function selectOps(cs: ChangeSet, approved: readonly string[]): ChangeSet
 }
 
 /**
+ * 무엇이 승인 버튼을 막고 있는가. **막는 페이지의 경로를 같이 준다** — 사유만 주면
+ * 사람이 카드 스무 장에서 그것을 눈으로 찾아야 한다.
+ */
+export interface ApplyBlocker {
+  reason: string;
+  /** 막는 페이지. 전역 사유나 "승인한 것이 없다" 면 null */
+  path: string | null;
+}
+
+/**
  * 승인 버튼을 열어도 되는가. **거부한 op 의 위반은 세지 않는다** —
  * 걸린 페이지 하나 때문에 멀쩡한 나머지를 통째로 버리게 하면 사람이 Lint 를 무시하게 된다.
  */
-export function applyBlockReason(review: Review, approved: readonly string[]): string | null {
-  if (review.globalViolations.length > 0) return '변경안 자체가 형식에 맞지 않습니다';
+export function applyBlocker(review: Review, approved: readonly string[]): ApplyBlocker | null {
+  if (review.globalViolations.length > 0) return { reason: '변경안 자체가 형식에 맞지 않습니다', path: null };
   const keep = new Set(approved);
   const picked = review.ops.filter((o) => keep.has(o.op.path));
-  if (picked.length === 0) return '승인한 페이지가 없습니다';
+  if (picked.length === 0) return { reason: '승인한 페이지가 없습니다', path: null };
   const bad = picked.find((o) => o.violations.length > 0 || o.conflict !== null);
-  if (bad) return `${bad.title} 을 승인 목록에서 빼거나 문제를 먼저 고쳐야 합니다`;
+  if (bad) return { reason: `${bad.title} 을 보류로 돌리거나 문제를 먼저 고쳐야 합니다`, path: bad.op.path };
   return null;
 }
 
+export function applyBlockReason(review: Review, approved: readonly string[]): string | null {
+  return applyBlocker(review, approved)?.reason ?? null;
+}
+
 export function canApply(review: Review, approved: readonly string[]): boolean {
-  return applyBlockReason(review, approved) === null;
+  return applyBlocker(review, approved) === null;
+}
+
+/** 문제가 있는 페이지만 승인 목록에서 뺀다. 검토 화면의 "문제 있는 것 빼기" 가 쓴다 */
+export function dropFlagged(review: Review, approved: readonly string[]): string[] {
+  const flagged = new Set(
+    review.ops.filter((o) => o.violations.length > 0 || o.conflict !== null).map((o) => o.op.path),
+  );
+  return approved.filter((p) => !flagged.has(p));
 }

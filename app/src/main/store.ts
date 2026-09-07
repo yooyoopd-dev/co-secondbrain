@@ -25,6 +25,15 @@ import type { InboxItem } from './ipc.ts';
 
 /** 받은 편지함 폴더. vault.ts 의 VAULT_DIRS 와 같은 이름이어야 한다 */
 const INBOX_DIR = '00_INBOX';
+
+/** 전체 보류한 변경안. `.sb/` 아래라 동기화도 Obsidian 도 안 본다 */
+const HELD_REVIEW_PATH = '.sb/held-review.json';
+
+interface HeldReview {
+  at: string;
+  approved: string[];
+  changeSet: ChangeSet;
+}
 import { conventionFile, promptFor, type WikiRef } from '../core/agent/ingest.ts';
 import { ALLOWED_TOOLS, mcpConfig, type McpLaunch } from '../core/mcp/config.ts';
 import { ANSWER_SCHEMA, parseAnswer, questionPrompt, toChangeSet, type Answer } from '../core/query.ts';
@@ -37,7 +46,18 @@ import { disposeWorkdir, prepareWorkdir } from '../core/agent/workdir.ts';
 import type { Extraction, Relation } from '../core/types.ts';
 import { hubClient, pendingChanges, resolveConflict, scanLocal, sync, readState, HubError, HubOffline, type HubClient, type SyncConflict } from '../core/sync/index.ts';
 import type { TokenStore } from './creds.ts';
-import type { AppSettings, AskResult, HubStatus, IngestResult, JudgmentResult, ProposeResult, ResolveResult, SourceSummary, SyncResult } from './ipc.ts';
+import type { AppSettings, AskResult, HubStatus, IngestResult, JudgmentResult, ProposeResult, ProviderPick, ResolveResult, SourceSummary, SyncResult, TaskProviders } from './ipc.ts';
+
+/** 부르는 쪽(main)이 넘기는 것. 취소 손잡이는 Store 가 스스로 만든다 */
+export interface RunHooks {
+  onOutput?: ((chunk: string, stream: 'stdout' | 'stderr') => void) | undefined;
+}
+
+/** `#runAgent` 가 AgentJob 에 얹어 주는 것 */
+interface AgentHooks {
+  onOutput?: ((chunk: string, stream: 'stdout' | 'stderr') => void) | undefined;
+  signal: AbortSignal;
+}
 
 /**
  * 화면에 띄우는 공급자 목록. **설치 여부는 앱을 켤 때 한 번 본다** —
@@ -77,6 +97,10 @@ export class Store {
   readonly #hubFetch: typeof globalThis.fetch;
   /** 병합 대기 중인 충돌. 변경안과 같이 **디스크에 없다** — 사람이 고를 때까지 메모리에만 있다 */
   #conflicts: SyncConflict[] = [];
+  /** CLI 가 도는 동안만 산다. 취소 버튼이 이걸 끊는다 */
+  #running: AbortController | null = null;
+  /** 방금 끝난 호출이 취소된 것인가. 실패와 취소는 화면에서 다르게 읽힌다 */
+  #cancelled = false;
 
   constructor(
     opts: {
@@ -362,12 +386,61 @@ export class Store {
     await fs.writeFile(safeJoin(v.root, CORE_CONTEXT_PATH), serializeCoreContext(ctx), 'utf8');
   }
 
+  /**
+   * CLI 한 번을 감싼다. 도는 동안만 취소 손잡이가 산다.
+   *
+   * **동시에 하나만 돈다.** 두 개를 띄우면 취소 버튼이 어느 것을 끊는지 알 수 없고,
+   * 지출도 사람이 예상한 것의 두 배가 된다.
+   */
+  async #runAgent<T>(hooks: RunHooks | undefined, fn: (h: AgentHooks) => Promise<T>): Promise<T> {
+    if (this.#running) throw new Error('이미 도는 호출이 있습니다');
+    const ac = new AbortController();
+    this.#running = ac;
+    this.#cancelled = false;
+    try {
+      return await fn({ onOutput: hooks?.onOutput, signal: ac.signal });
+    } finally {
+      if (this.#running === ac) this.#running = null;
+    }
+  }
+
+  /** 도는 것을 끊는다. 없으면 false — 화면이 눌러도 되는지 미리 안 물어도 된다 */
+  cancelAgent(): boolean {
+    if (!this.#running) return false;
+    this.#cancelled = true;
+    this.#running.abort();
+    return true;
+  }
+
+  /**
+   * 화면에 미리 보여줄 공급자. **부르기 전에 알려 준다** — 눌러 본 뒤에야
+   * "내장 MCP 서버에 붙을 수 있는 공급자여야 합니다" 를 보는 것은 늦다.
+   */
+  async taskProviders(): Promise<TaskProviders> {
+    const now = new Date().toISOString();
+    const ctx = {
+      available: await this.available(),
+      overLimit: this.spendStatus(now).filter((s) => s.level === 'over').map((s) => s.provider),
+      overrides: this.#overrides(),
+    };
+    const pick = (k: TaskKind): ProviderPick => {
+      const r = route(k, ctx);
+      return r.ok ? { ok: true, provider: r.provider, why: r.why } : { ok: false, reason: r.reason };
+    };
+    return { query: pick('query'), ingest: pick('ingest.single') };
+  }
+
   /** 공급자별 이번 달 소비와 남은 문서 수. 화면에 띄운다. */
   spendStatus(now: string = new Date().toISOString()): Status[] {
     return (['claude-code', 'gemini'] as const).map((p) => spendStatus(this.#spend, this.#limits, p, now));
   }
 
-  async propose(sourceId: string, provider?: ProviderId, kind: TaskKind = 'ingest.single'): Promise<ProposeResult> {
+  async propose(
+    sourceId: string,
+    hooks?: RunHooks,
+    provider?: ProviderId,
+    kind: TaskKind = 'ingest.single',
+  ): Promise<ProposeResult> {
     const v = this.#require();
     const ext = await this.readSource(sourceId);
     if (!ext) return { ok: false, error: `원본이 없습니다: ${sourceId}` };
@@ -385,14 +458,16 @@ export class Store {
     const agentsMd = await fs.readFile(safeJoin(v.root, `${TEMPLATES_DIR}/AGENTS.md`), 'utf8');
     const wd = await prepareWorkdir({ [cli.conventionFile]: conventionFile(agentsMd, coreContextBlock(await this.coreContext())) });
     try {
-      const r = await cli.run(
-        { workdir: wd.root, prompt: promptFor(ext, await this.#wikiRefs()), validate: validateChangeSet },
-        CHANGESET_SCHEMA,
+      const r = await this.#runAgent(hooks, async (h) =>
+        cli.run(
+          { workdir: wd.root, prompt: promptFor(ext, await this.#wikiRefs()), validate: validateChangeSet, ...h },
+          CHANGESET_SCHEMA,
+        ),
       );
       // 실패해도 돈은 나갔다. 성공만 세면 계량기가 실제보다 낮게 나온다.
       this.#spend = addSpend(this.#spend, picked.provider, r.usage, now);
       if (this.#spendFile) await writeSpend(this.#spendFile, this.#spend);
-      if (!r.ok) return { ok: false, error: r.error ?? '변경안을 받지 못했습니다' };
+      if (!r.ok) return { ok: false, error: this.#cancelled ? '취소했습니다' : (r.error ?? '변경안을 받지 못했습니다') };
 
       const hash = hashContent(await fs.readFile(safeJoin(v.root, SOURCES_DIR, ext.filename)));
       this.#manifest = markProposed(this.#manifest, hash, picked.provider, now);
@@ -415,14 +490,65 @@ export class Store {
     });
     if (res.applied.length > 0) {
       this.#pending = null;
+      // 보류해 둔 사본이 남아 있으면 다음에 또 뜬다. 적용했으면 그것도 끝난 것이다.
+      await fs.rm(safeJoin(v.root, HELD_REVIEW_PATH), { force: true });
       await writeIndex(v, (await readWikiPages(v)).entries);
       await appendLog(v, 'ingest', `변경안 적용 ${res.applied.length}건 — ${cs.summary}`);
     }
     return res;
   }
 
-  discardReview(): void {
+  /** 버린다. **보류해 둔 것도 같이 지운다** — 버렸는데 다음에 또 뜨면 버린 것이 아니다 */
+  async discardReview(): Promise<void> {
     this.#pending = null;
+    if (this.#vault) await fs.rm(safeJoin(this.#vault.root, HELD_REVIEW_PATH), { force: true });
+  }
+
+  /**
+   * 전체 보류 — 지금 상태를 그대로 두고 화면을 벗어난다.
+   *
+   * **변경안이 디스크에 닿는 유일한 자리다.** 그래도 위키는 아니고 `.sb/` 아래이며,
+   * 여기 있다는 것만으로는 아무것도 적용되지 않는다 — 다시 열어 승인해야 관문을
+   * 거쳐 반영된다. 메모리에만 두면 실수로 창을 닫은 사람이 CLI 호출 값을 통째로
+   * 잃는다. 그 손실이 파일 하나보다 크다.
+   */
+  async holdReview(approved: readonly string[]): Promise<void> {
+    const v = this.#require();
+    if (!this.#pending) throw new Error('검토 중인 변경안이 없습니다');
+    const held: HeldReview = { at: new Date().toISOString(), approved: [...approved], changeSet: this.#pending };
+    await fs.writeFile(safeJoin(v.root, HELD_REVIEW_PATH), JSON.stringify(held, null, 2), 'utf8');
+    this.#pending = null;
+  }
+
+  /** 보류해 둔 것이 있는가. 레일의 배지가 쓴다 — 여기서 관문을 다시 돌리지 않는다 */
+  async heldReviewInfo(): Promise<{ at: string; summary: string; ops: number } | null> {
+    const held = await this.#readHeld();
+    return held ? { at: held.at, summary: held.changeSet.summary, ops: held.changeSet.ops.length } : null;
+  }
+
+  /**
+   * 보류한 것을 다시 연다. **관문을 처음부터 다시 돌린다** — 보류하는 동안 사람이
+   * Obsidian 으로 페이지를 고쳤을 수 있고, 그러면 충돌과 위반이 달라진다.
+   */
+  async resumeReview(): Promise<{ review: Review; approved: string[] } | null> {
+    const v = this.#require();
+    const held = await this.#readHeld();
+    if (!held) return null;
+    this.#pending = held.changeSet;
+    return { review: await buildReview(v, held.changeSet, await this.#anchors()), approved: held.approved };
+  }
+
+  /** 깨진 파일은 없는 것으로 본다. 여기서 던지면 Vault 를 못 연다 */
+  async #readHeld(): Promise<HeldReview | null> {
+    if (!this.#vault) return null;
+    try {
+      const raw: unknown = JSON.parse(await fs.readFile(safeJoin(this.#vault.root, HELD_REVIEW_PATH), 'utf8'));
+      const h = raw as HeldReview;
+      if (!h?.changeSet?.ops || !Array.isArray(h.changeSet.ops)) return null;
+      return { at: h.at ?? '', approved: Array.isArray(h.approved) ? h.approved : [], changeSet: h.changeSet };
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -442,7 +568,7 @@ export class Store {
    * 위키에 묻는다. 후보 페이지를 밀어 넣지 않고 **에이전트가 MCP 로 당겨 간다**
    * (PLAN.md §7.2 안 B). 디스크는 안 건드린다 — 보관은 따로 승인받는다.
    */
-  async ask(question: string, provider?: ProviderId): Promise<AskResult> {
+  async ask(question: string, hooks?: RunHooks, provider?: ProviderId): Promise<AskResult> {
     const v = this.#require();
     if (!this.#mcpLaunch) return { ok: false, error: '읽기 경로가 설정되지 않았습니다' };
 
@@ -456,18 +582,21 @@ export class Store {
     const cli = createCli(picked.provider);
     const wd = await prepareWorkdir({ 'mcp.json': JSON.stringify(mcpConfig(this.#mcpLaunch(v.root)), null, 1) });
     try {
-      const r = await cli.run(
-        {
-          workdir: wd.root,
-          prompt: questionPrompt(question, coreContextBlock(await this.coreContext())),
-          mcp: { configPath: safeJoin(wd.root, 'mcp.json'), allowedTools: ALLOWED_TOOLS },
-          validate: (d) => parseAnswer(d).reason,
-        },
-        ANSWER_SCHEMA,
+      const r = await this.#runAgent(hooks, async (h) =>
+        cli.run(
+          {
+            workdir: wd.root,
+            prompt: questionPrompt(question, coreContextBlock(await this.coreContext())),
+            mcp: { configPath: safeJoin(wd.root, 'mcp.json'), allowedTools: ALLOWED_TOOLS },
+            validate: (d) => parseAnswer(d).reason,
+            ...h,
+          },
+          ANSWER_SCHEMA,
+        ),
       );
       this.#spend = addSpend(this.#spend, picked.provider, r.usage, now);
       if (this.#spendFile) await writeSpend(this.#spendFile, this.#spend);
-      if (!r.ok) return { ok: false, error: r.error ?? '답변을 받지 못했습니다' };
+      if (!r.ok) return { ok: false, error: this.#cancelled ? '취소했습니다' : (r.error ?? '답변을 받지 못했습니다') };
 
       const { answer, reason } = parseAnswer(r.data);
       if (!answer) return { ok: false, error: reason ?? '답변 형식이 맞지 않습니다' };

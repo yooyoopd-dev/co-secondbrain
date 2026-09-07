@@ -57,6 +57,16 @@ export interface AgentJob {
    * Lint 판단 검사 응답이 항상 거부됐다.
    */
   validate?: (data: unknown) => string | null;
+  /**
+   * CLI 가 뱉는 것을 오는 대로 넘긴다. 화면이 "도는 중" 을 사람에게 보여줄 때 쓴다.
+   *
+   * **여기로 오는 양은 CLI 가 정한다.** `--output-format json` 은 끝에 한 덩어리로
+   * 주므로 도는 동안 보이는 것은 주로 stderr 다. 매 글자가 오는 형식(stream-json)은
+   * 아직 재 보지 않았다.
+   */
+  onOutput?: ((chunk: string, stream: 'stdout' | 'stderr') => void) | undefined;
+  /** 사람이 취소를 누르면 여기로 온다. 어댑터는 그대로 exec 에 넘긴다 */
+  signal?: AbortSignal | undefined;
 }
 
 export interface AgentResult {
@@ -90,5 +100,11 @@ export type Exec = (
   bin: string,
   argv: readonly string[],
   /** `stdin` 으로 프롬프트를 넘긴다 — Windows argv 인용부호를 피한다 (agent/exec.ts) */
-  opts: { cwd: string; env: NodeJS.ProcessEnv; stdin?: string },
+  opts: {
+    cwd: string;
+    env: NodeJS.ProcessEnv;
+    stdin?: string | undefined;
+    onOutput?: ((chunk: string, stream: 'stdout' | 'stderr') => void) | undefined;
+    signal?: AbortSignal | undefined;
+  },
 ) => Promise<{ stdout: string; stderr: string; code: number }>;

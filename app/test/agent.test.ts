@@ -716,7 +716,7 @@ test('스탬프 — ops 가 없는 응답에서 터지지 않는다. 판정은 �
 // 2026-09-07 사내 PC 실측: `spawn C:\Users\...\AppData\Roaming\npm\gemini ENOENT` 로
 // 열 번 다 안 떴다. npm 전역 설치가 확장자 없는 껍데기를 같이 깔고 `where` 가 그것을
 // 먼저 주는데, sh 스크립트라 CreateProcess 가 못 읽는다 (ROADMAP §8).
-import { pickWindowsBin } from '../src/core/agent/exec.ts';
+import { pickWindowsBin, realExec } from '../src/core/agent/exec.ts';
 
 const NPM_WHERE = [
   'C:\\Users\\hong\\AppData\\Roaming\\npm\\gemini',
@@ -743,4 +743,37 @@ test('.ps1 은 후보가 아니다 — spawn 이 못 띄운다', () => {
 test('못 찾으면 이름을 그대로 돌려준다. 판정은 부르는 쪽이 한다', () => {
   assert.equal(pickWindowsBin('gemini', '').path, 'gemini');
   assert.equal(pickWindowsBin('gemini', '').shell, false);
+});
+
+/* ---------------- 실제 서브프로세스 — 흐르는 출력과 취소 ---------------- */
+
+/** 여기서만 진짜 프로세스를 띄운다. 나머지 시험은 전부 가짜 exec 을 쓴다 */
+const NODE_OPTS = { cwd: process.cwd(), env: process.env };
+
+test('exec — CLI 가 뱉는 것을 오는 대로 넘긴다', async () => {
+  const seen: { chunk: string; stream: string }[] = [];
+  const r = await realExec(
+    process.execPath,
+    ['-e', 'process.stdout.write("나온다"); process.stderr.write("진행 중")'],
+    { ...NODE_OPTS, onOutput: (chunk, stream) => seen.push({ chunk, stream }) },
+  );
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout, '나온다');
+  assert.ok(seen.some((x) => x.stream === 'stdout' && x.chunk.includes('나온다')), JSON.stringify(seen));
+  assert.ok(seen.some((x) => x.stream === 'stderr' && x.chunk.includes('진행 중')), JSON.stringify(seen));
+});
+
+test('exec — 취소하면 죽이고 사유를 남긴다', async () => {
+  const ac = new AbortController();
+  const p = realExec(process.execPath, ['-e', 'setTimeout(() => {}, 60_000)'], { ...NODE_OPTS, signal: ac.signal });
+  setTimeout(() => ac.abort(), 50);
+  const r = await p;
+  assert.equal(r.code, -2);
+  assert.match(r.stderr, /취소/);
+});
+
+test('exec — 이미 취소된 신호면 아예 안 띄운다', async () => {
+  const r = await realExec(process.execPath, ['-e', 'process.exit(0)'], { ...NODE_OPTS, signal: AbortSignal.abort() });
+  assert.equal(r.code, -2);
+  assert.equal(r.stdout, '');
 });

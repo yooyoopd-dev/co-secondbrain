@@ -30,6 +30,8 @@
   --ok-wash: #eaf5ec;
   --danger-wash: #fbeceb;
   --info-wash: #eaf0fd;
+  /* 관문에 막힌 카드. 위반은 오류가 아니라 사람이 처리할 일이라 빨강을 안 쓴다 */
+  --warn-wash: #fbf2e2;
 
   /* 폰트 파일을 번들하지 않는다. Windows 11 의 Segoe UI Variable 이 명세가 말하는
    * 휴머니스트 가변 폰트고, 한글은 Malgun Gothic 이 받는다. */

@@ -54,6 +54,26 @@ export type JudgmentResult =
   | { ok: true; result: ParsedJudgment; costUsd: number }
   | { ok: false; error: string };
 
+/** 어느 CLI 가 이 작업을 맡는가. 누르기 전에 화면에 적어 둔다 */
+export type ProviderPick =
+  | { ok: true; provider: ProviderId; why: string }
+  | { ok: false; reason: string };
+
+/** 화면이 라벨에 쓰는 두 가지. 나머지 작업은 아직 라벨을 안 붙였다 */
+export interface TaskProviders {
+  /** [LLM 위키에 묻기] */
+  query: ProviderPick;
+  /** [이 원본으로 위키 갱신] */
+  ingest: ProviderPick;
+}
+
+/** 전체 보류해 둔 변경안 요약. 레일의 배지가 쓴다 */
+export interface HeldReviewInfo {
+  at: string;
+  summary: string;
+  ops: number;
+}
+
 /** 허브 연결 상태. 좌측 레일과 동기화 화면이 같이 쓴다 */
 export interface HubStatus {
   /** 개인 Vault 인가. 그렇다면 동기화 자체가 없다 */
@@ -117,6 +137,21 @@ export interface SbApi {
   /** 관문 8 — 사람이 승인한 경로만 적용한다 */
   applyReview(approved: string[]): Promise<ApplyResult>;
   discardReview(): Promise<void>;
+  /** 지금 상태 그대로 `.sb/` 에 두고 나간다. 다시 열 때까지 아무것도 적용되지 않는다 */
+  holdReview(approved: string[]): Promise<void>;
+  /** 보류해 둔 것이 있는가. 없으면 null */
+  heldReview(): Promise<HeldReviewInfo | null>;
+  /** 보류한 것을 다시 연다. 관문을 처음부터 다시 돌린 결과가 온다 */
+  resumeReview(): Promise<{ review: Review; approved: string[] } | null>;
+  /** 도는 CLI 를 끊는다. 도는 것이 없으면 false */
+  cancelAgent(): Promise<boolean>;
+  /**
+   * CLI 가 뱉는 것을 받는다. **이 표면에서 유일하게 main 이 밀어 주는 채널이다.**
+   * 돌려주는 것을 부르면 구독을 끊는다.
+   */
+  agentOutput(cb: (chunk: string) => void): () => void;
+  /** 지금 설정에서 어느 CLI 가 어느 작업을 맡는지 */
+  taskProviders(): Promise<TaskProviders>;
   /** 검토 화면에서 고친 내용을 반영하고 관문을 다시 돌린다 */
   editOp(path: string, content: string): Promise<Review>;
   /** 공급자별 이번 달 소비와 남은 문서 수 */
@@ -187,6 +222,12 @@ export const IPC = {
   propose: 'sb:propose',
   applyReview: 'sb:applyReview',
   discardReview: 'sb:discardReview',
+  holdReview: 'sb:holdReview',
+  heldReview: 'sb:heldReview',
+  resumeReview: 'sb:resumeReview',
+  cancelAgent: 'sb:cancelAgent',
+  agentOutput: 'sb:agentOutput',
+  taskProviders: 'sb:taskProviders',
   editOp: 'sb:editOp',
   spendStatus: 'sb:spendStatus',
   plan: 'sb:plan',
