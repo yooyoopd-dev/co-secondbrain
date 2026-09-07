@@ -13,13 +13,13 @@
 | | |
 |---|---|
 | 서버 | Ubuntu PC 한 대. 사내망 고정 IP |
-| Node | **22.22.2 에서 플래그 없이 확인**했습니다. 그보다 낮은 판은 안 재 봤습니다 |
+| Node | **22.22.2 에서 플래그 없이 확인**했습니다. 그보다 낮은 판도, 24.x 도 안 재 봤습니다 |
 | 인터넷 | 필요 없습니다. 빌드본을 옮겨 넣습니다 |
 | 옮기는 길 | SSH (1번) 또는 USB. 허브 PC 앞에 앉지 않아도 됩니다 |
 | 디스크 | 원본 500건 기준 blob 이 수 GB 까지 갑니다 ([`HUB.md`](HUB.md) §7) |
 
 `node:sqlite` 는 Node 판에 따라 `--experimental-sqlite` 를 요구합니다. 22.22.2 는 안
-요구합니다. 낮은 판을 쓰신다면 먼저 이 한 줄로 보십시오.
+요구합니다. 다른 판을 쓰신다면 먼저 이 한 줄로 보십시오.
 
 ```bash
 node -e "require('node:sqlite'); console.log('ok')"
@@ -163,8 +163,11 @@ node --version
 
 - `sudo` 가 PATH 를 `secure_path` 로 갈아 끼웁니다. 거기에 홈 폴더가 없어
   `sudo: node: command not found` 가 납니다
-- 서비스는 `co-hub` 계정으로 도는데 그 계정은 남의 홈을 못 읽습니다
+- 절대 경로로 불러 그 줄을 넘겨도 다음 줄에서 막힙니다. 서비스는 `co-hub` 계정으로
+  도는데 그 계정은 남의 홈을 못 읽습니다. `sudo: unable to execute
+  /home/.../.nvm/versions/node/vXX/bin/node: Permission denied` 가 이것입니다
 
+두 오류는 원인이 같습니다. 절대 경로는 첫 번째만 넘기고 두 번째는 못 넘깁니다.
 `node --version` 이 되는데 `sudo -u co-hub node ...` 가 안 되면 이 경우입니다.
 어디 깔렸는지 봅니다.
 
@@ -175,13 +178,23 @@ sudo -u co-hub env | grep ^PATH
 ```
 
 두 번째 줄이 `/home/...` 이나 `.nvm` 을 가리키면 위의 tarball 방식으로 **시스템 전체에**
-다시 깝니다. nvm 쪽은 그대로 두어도 됩니다 — `/usr/local/bin` 이 앞서므로 로그인 셸에서는
-계속 nvm 판이 잡힙니다.
+다시 깝니다. nvm 쪽은 지워도 되고 그대로 두어도 됩니다. nvm 이 `.bashrc` 에서 자기 경로를
+PATH 앞에 붙이므로 로그인 셸에서는 계속 nvm 판이 잡힙니다. `sudo` 와 서비스는
+`/usr/local/bin` 판을 씁니다. 둘이 부딪히지 않습니다.
 
 ```bash
-sudo tar -xJf node-v22.22.2-linux-x64.tar.xz -C /usr/local --strip-components=1
+# 인터넷이 되면
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# 안 되면 tarball. 개인 PC 에서 scp 로 보내 두었다면 그 경로를 씁니다
+sudo tar -xJf ~/node-v22.22.2-linux-x64.tar.xz -C /usr/local --strip-components=1
+
 sudo -u co-hub /usr/local/bin/node --version     # 이게 되면 끝입니다
 ```
+
+이 다음부터 `node` 대신 `/usr/local/bin/node` 를 씁니다. 6번의 손띄우기도, 7번의
+`ExecStart` 도 이 경로입니다.
 
 ## 3. 계정과 폴더
 
@@ -257,9 +270,15 @@ systemd 에 넣기 전에 됩니다. 잘못된 설정을 서비스로 감싸면 
 로그인 셸에서 되던 `node` 가 여기서는 안 될 수 있습니다 (2번).
 
 ```bash
-NODE=$(command -v node)
-echo $NODE                          # /usr/bin/node 나 /usr/local/bin/node 여야 합니다
-sudo -u co-hub $NODE /srv/co-hub/dist/main.js /srv/co-hub/config.json
+readlink -f "$(command -v node)"    # /usr/bin/node 나 /usr/local/bin/node 여야 합니다
+```
+
+`/home/...` 이나 `.nvm` 이 나오면 여기서 멈추고 2번으로 돌아가 Node 를 시스템 전체에
+깝니다. 그 경로를 그대로 쓰면 `Permission denied` 가 납니다 — `co-hub` 계정이 남의 홈을
+못 읽습니다.
+
+```bash
+sudo -u co-hub /usr/local/bin/node /srv/co-hub/dist/main.js /srv/co-hub/config.json
 ```
 
 이렇게 나오면 뜬 것입니다.
@@ -365,6 +384,7 @@ journalctl -u co-hub -n 50 --no-pager
 |---|---|
 | `adminKey 는 공백 없는 ASCII` | config.json 의 `adminKey` 에 한글이나 공백이 있습니다 |
 | `sudo: node: command not found` | `sudo` 가 PATH 를 갈아 끼웁니다. 절대 경로로 부르거나 Node 를 시스템 전체에 깝니다 (2번) |
+| `sudo: unable to execute .../node: Permission denied` | Node 가 남의 홈(nvm) 안에 있습니다. `co-hub` 계정이 못 읽습니다. 시스템 전체에 다시 깝니다 (2번) |
 | 바로 죽는다 | Node 판을 봅니다. `node -e "require('node:sqlite')"` |
 | 켜지는데 못 붙는다 | 방화벽과 `bind`. `0.0.0.0` 이어야 밖에서 붙습니다 |
 | `ExperimentalWarning: SQLite` | 정상입니다. Node 22 가 `node:sqlite` 에 붙이는 경고입니다 |
