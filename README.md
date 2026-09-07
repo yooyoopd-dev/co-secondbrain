@@ -110,6 +110,7 @@ IP 주소)가 팀원 사이를 중계합니다. CO-Hub는 SQLite와 블롭 저�
 | **Windows 포터블 exe 배포** — GitHub Actions 가 묶는다. 띄워서 스모크를 통과시킨 뒤에만 릴리스로 올린다 | 완료 |
 | **Gemini 토큰 계량** — `-o json` 봉투에서 토큰을 센다. 금액은 사내 단가를 몰라 0 으로 둔다 | 완료 (사내 3/3 확인) |
 | **사내 자가검사 스크립트 2종** — 추출기 · 엔티티 유사도. 문서를 안 내보내고 집계 수치만 화면에 낸다 | 완료 (수치는 사내에서) |
+| **오프라인 설치 · 운영 가이드** — 인터넷 없는 PC 에서 받기부터 되돌리기까지 | 완료 |
 | Codex 어댑터 | 사내 환경 필요 |
 
 자동 검사 450건이 통과합니다 (앱 428 · 허브 22). 앱을 실제로 띄워 보는 스모크가 20/20,
@@ -127,6 +128,7 @@ Windows 양쪽에서 돕니다. Windows 쪽은 **묶은 배포본을 띄워** �
 | [docs/PLAN.md](docs/PLAN.md) | 전체 계획 — 개인/CO 이중 공간, 3계층 위키, 인제스트·질의·린트, CLI 어댑터, 마일스톤 |
 | [docs/PROVIDER-ROUTING.md](docs/PROVIDER-ROUTING.md) | 공급자 라우팅 — 토큰 상한이 다른 CLI를 섞어 쓰기 |
 | [docs/HUB.md](docs/HUB.md) | CO-Hub 서버 — 데이터 모델, API, 동기화 알고리즘, 보안, 운영 |
+| [docs/OFFLINE.md](docs/OFFLINE.md) | **오프라인 설치·운영 가이드** — 인터넷 없는 사내 PC 용 |
 | [docs/DESIGN-SYSTEM.md](docs/DESIGN-SYSTEM.md) | 디자인 토큰·컴포넌트 규칙 |
 | [docs/REFERENCE-llm-wiki.md](docs/REFERENCE-llm-wiki.md) | 기반이 된 Karpathy "LLM Wiki" 원문 정리 및 본 설계의 반영·변형 내역 |
 | [docs/REVIEW-graphify.md](docs/REVIEW-graphify.md) | 선행 사례 graphify 검토 — v0.3의 변경 근거 |
@@ -194,7 +196,6 @@ Jaro-Winkler 임계는 0.92에서 0.96으로 올려야 합니다.
 
 | # | 남은 작업 | 구분 |
 |---|---|---|
-| 21 | 오프라인 문서 | **A** |
 | 19 | Codex 어댑터 (`--output-schema`) | **보류** — 사내 검증 불가 |
 
 17 · 18(추출기 · 엔티티 유사도 자가검사)은 스크립트가 끝났고 실행만 사내에서 합니다.
