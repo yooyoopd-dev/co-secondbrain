@@ -52,6 +52,8 @@ export interface LintReport {
 export function lint(
   pages: readonly Page[],
   anchors: ReadonlyMap<string, ReadonlySet<string>>,
+  /** #9 에서 사람이 이미 "다른 대상" 이라고 한 쌍 (`lint/rejected.ts`) */
+  rejected?: ReadonlySet<string>,
 ): LintReport {
   const findings: Finding[] = [];
   const g = analyze(pages);
@@ -130,6 +132,7 @@ export function lint(
       .filter((p) => p.front.type === 'entity' || p.front.type === 'concept')
       .map((p) => ({ id: p.front.id, label: p.front.title, aliases: p.front.aliases })),
     (a, b) => community.has(a) && community.get(a) === community.get(b),
+    rejected,
   );
   for (const d of candidates) {
     findings.push({

@@ -96,6 +96,18 @@ const fixed = await win.evaluate(async () => {
 });
 ok('공급자 고정이 왕복한다', fixed.a === 'gemini' && fixed.b === null, fixed);
 
+// 중복 후보 거부가 왕복하는가 (ROADMAP.md §14). Vault 를 안 열었으면 거절해야 한다 —
+// 거부는 Vault 안 파일이라 열지 않고 부르면 어디에 쓸지 모른다.
+const rej = await win.evaluate(async () => {
+  try {
+    await window.sb.rejectedDuplicates();
+    return 'Vault 없이도 통했다';
+  } catch (e) {
+    return String(e).includes('열려 있지 않습니다') ? 'ok' : String(e).slice(0, 80);
+  }
+});
+ok('Vault 없이 거부 목록을 부르면 거절한다', rej === 'ok', rej);
+
 // 허브 토큰은 OS 자격 증명 저장소에 넣는다. **여기서 재는 것은 어떤 백엔드가 잡히는가**이고
 // 리눅스 컨테이너에는 키링이 없어 값 자체는 사내·Windows 와 다르다.
 // Windows 에서는 available=true 여야 한다 (DPAPI). 아니면 앱이 연결을 거절한다.
