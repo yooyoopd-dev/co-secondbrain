@@ -13,7 +13,9 @@
 //   node spikes/cli/token-ratio.mjs --only claude
 //   node spikes/cli/token-ratio.mjs --only gemini
 //
-// 비용: claude 호출 6회. 고정 오버헤드가 대부분이라 회당 $0.13 안팎이다 (M0 실측).
+// **돈이 나간다.** claude 호출 6회이고 고정 오버헤드가 대부분이라 회당 $0.13 안팎이다
+// (M0 실측). 1번 줄 끝에 이번 실행이 쓴 금액이 붙는다. 개인 계정 예산이 걱정되면
+// `--only gemini` 로 돌리면 호출이 0 이다.
 import { spawn } from 'node:child_process';
 import { resolveBin } from './win-bin.mjs';
 
@@ -107,6 +109,15 @@ function claudeInputTokens(stdout) {
   return n > 0 ? n : null;
 }
 
+/** 돈이 나가는 스크립트다. 얼마 썼는지 안 보여주면 다음 사람이 놀란다. */
+function claudeCost(stdout) {
+  try {
+    return JSON.parse(stdout).total_cost_usd ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 const lines = [];
 const fail = (m) => {
   console.error(m);
@@ -147,6 +158,7 @@ if (only !== 'gemini') {
   if (bin === null) fail('claude 를 찾지 못했습니다. `where claude` 가 무엇을 주는지 확인하십시오.');
 
   const out = [];
+  let spent = 0;
   for (const k of KINDS) {
     const pts = [];
     for (const rep of [k.small, k.large]) {
@@ -161,6 +173,7 @@ if (only !== 'gemini') {
         console.error(`  stderr 앞 200자: ${r.stderr.trim().slice(0, 200) || '(없음)'}`);
         process.exit(2);
       }
+      spent += claudeCost(r.stdout);
       pts.push({ chars: [...body].length, tok });
       process.stderr.write(`  ${k.label} ${rep}배: ${pts.at(-1).chars}자 → ${tok}토큰\n`);
     }
@@ -168,7 +181,7 @@ if (only !== 'gemini') {
     const dTok = pts[1].tok - pts[0].tok;
     out.push(`${k.id}=${(dTok / dChars).toFixed(3)}`);
   }
-  lines.push(`1 W10 claude 토큰/자  ${out.join(' ')}`);
+  lines.push(`1 W10 claude 토큰/자  ${out.join(' ')}  (이번 실행 $${spent.toFixed(3)})`);
 }
 
 /* ---------------- B. gemini — 봉투에 무엇이 오는가 (W10 · W11) ---------------- */

@@ -10,9 +10,12 @@
 // 앵커 10/10. **펜스도 10/10 이었다** — 그 프롬프트가 펜스를 요구했기 때문이다.
 // 두 회차를 합치면 모델은 시킨 대로 낸다. 그러니 **펜스가 있는 경우를 같이 받는다.**
 //
-// 비용을 보고하지 않는다. `total_cost_usd` 에 해당하는 값이 응답에 없어서 지출 계량기가
-// Gemini 소비를 셀 수 없다. PROVIDER-ROUTING.md §7.2.1 이 토큰을 많이 먹는 작업을
-// Gemini 로 보내는 근거가 "상한이 느슨하다"는 것이라 지금은 이대로 둔다.
+// 비용을 보고하지 않아서 지출 계량기가 Gemini 소비를 못 센다. 다만 **셀 수 없는 것이
+// 아니다** — 2026-09-07 사내 실측에서 `gemini -o json` 의
+// `stats.models[모델].tokens` 가 `input · prompt · candidates · total · cached` 를
+// 준다 (ROADMAP.md §10.3). 이 어댑터가 그 플래그를 안 쓸 뿐이다. 붙이는 것은
+// ROADMAP 27번이다. 지금 갈아 끼우지 않는 이유는 응답 봉투가 통째로 바뀌어서
+// W3 를 100% 로 통과시킨 경로가 미검증 경로로 바뀌기 때문이다.
 import { validateShape, type ChangeSet } from '../changeset.ts';
 import { realExec } from './exec.ts';
 import { stampProvider } from './stamp.ts';
