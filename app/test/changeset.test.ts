@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createVault } from '../src/core/vault.ts';
-import { applyChangeSet, validateShape, validateAnchors, currentHash, type ChangeSet } from '../src/core/changeset.ts';
+import { applyChangeSet, validateShape, validateAnchors, repairAnchors, currentHash, type ChangeSet } from '../src/core/changeset.ts';
 import { snapshot, restore, listSnapshots } from '../src/core/history.ts';
 import { pageHash, parsePage, serializePage, emptyPage } from '../src/core/page.ts';
 
@@ -198,4 +198,53 @@ test('같은 내용은 blob 을 한 번만 저장한다', async () => {
   await snapshot(v, ['02_NOTES/entities/a.md', '02_NOTES/entities/b.md'], '동일 내용');
   const blobs = await fs.readdir(path.join(v.root, '.sb/history/blobs'));
   assert.equal(blobs.length, 1, `콘텐츠 주소가 아니다: ${blobs.length}개`);
+});
+
+/**
+ * 사내 1회차. Gemini 가 낸 변경안에 없는 앵커가 많아 사람이 본문에서 하나씩 찾아
+ * 지워야 승인이 됐다 (ROADMAP §24). 관문을 느슨하게 하는 대신 그 편집을 앱이 한다.
+ */
+const REPAIR_KNOWN = new Map([['src-kickoff', new Set(['slide-12'])]]);
+
+function page(body: string, claims: string): string {
+  return [
+    '---', 'id: ent-x', 'type: entity', 'title: 엑스', 'summary: 요약.',
+    'classification: internal', 'claims:', claims,
+    'updated: 2026-09-05T00:00:00.000Z', 'updated_by: app', '---', '', body, '',
+  ].join('\n');
+}
+
+test('없는 앵커 인용을 지우고 문장은 남긴다', () => {
+  const content = page(
+    '갱신일은 3월 31일이다.[^src-kickoff#slide-12] 담당은 구매팀이다.[^src-kickoff#없음]',
+    ['  - text: 살아남는 주장.', '    source: src-kickoff#slide-12', '    confidence: EXTRACTED',
+     '  - text: 지어낸 주장.', '    source: src-kickoff#p-99', '    confidence: EXTRACTED'].join('\n'),
+  );
+  const cs: ChangeSet = { summary: 's', ops: [{ op: 'create', path: '02_NOTES/entities/x.md', baseHash: null, content }] };
+
+  const r = repairAnchors(cs, REPAIR_KNOWN);
+  assert.equal(r.removed, 2, '본문 하나와 주장 하나를 지워야 한다');
+  const after = parsePage(r.changeSet.ops[0]!.content!);
+  assert.ok(after.body.includes('담당은 구매팀이다.'), '문장까지 지우면 안 된다');
+  assert.ok(!after.body.includes('없음'), '없는 인용이 남았다');
+  assert.ok(after.body.includes('[^src-kickoff#slide-12]'), '있는 인용까지 지웠다');
+  assert.deepEqual(after.front.claims.map((c) => c.source), ['src-kickoff#slide-12']);
+
+  // 지운 결과가 관문 5 를 통과해야 한다. 관문을 느슨하게 한 것이 아니다
+  assert.deepEqual(validateAnchors(r.changeSet, REPAIR_KNOWN), []);
+});
+
+test('지울 것이 없으면 내용을 안 건드린다', () => {
+  const content = page('가.[^src-kickoff#slide-12]', ['  - text: 가.', '    source: src-kickoff#slide-12', '    confidence: EXTRACTED'].join('\n'));
+  const cs: ChangeSet = { summary: 's', ops: [{ op: 'create', path: '02_NOTES/entities/x.md', baseHash: null, content }] };
+  const r = repairAnchors(cs, REPAIR_KNOWN);
+  assert.equal(r.removed, 0);
+  assert.equal(r.changeSet.ops[0]?.content, content);
+});
+
+test('앵커 표기의 껍데기를 벗기고 읽는다', () => {
+  const content = page('가.', ['  - text: 가.', '    source: "[^src-kickoff#slide-12]"', '    confidence: EXTRACTED'].join('\n'));
+  assert.equal(parsePage(content).front.claims[0]?.source, 'src-kickoff#slide-12');
+  const cs: ChangeSet = { summary: 's', ops: [{ op: 'create', path: '02_NOTES/entities/x.md', baseHash: null, content }] };
+  assert.deepEqual(validateAnchors(cs, REPAIR_KNOWN), [], '껍데기 때문에 막히면 안 된다');
 });

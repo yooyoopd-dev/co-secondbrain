@@ -180,6 +180,7 @@ function registerIpc(): void {
   handle(IPC.cancelAgent, () => store.cancelAgent());
   handle(IPC.taskProviders, () => store.taskProviders());
   handle(IPC.editOp, (_e, path: string, content: string) => store.editOp(path, content));
+  handle(IPC.repairAnchors, () => store.repairAnchors());
   handle(IPC.spendStatus, () => store.spendStatus());
   handle(IPC.plan, () => store.plan());
   handle(IPC.ask, (e, q: string) => store.ask(q, { onOutput: (chunk) => e.sender.send(IPC.agentOutput, chunk) }));

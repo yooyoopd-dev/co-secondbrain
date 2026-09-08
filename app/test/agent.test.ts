@@ -663,11 +663,13 @@ test('읽기 경로는 MCP 에 못 붙는 공급자로 폴백하지 않는다', 
   }
 });
 
-test('사내 전역 설정을 고친 뒤로 읽기 경로가 Gemini 로도 간다', () => {
-  // 2026-09-09 사용자가 `security.folderTrust.enabled: false` 를 넣었다 (ROADMAP §16)
-  assert.ok(MCP_CAPABLE.includes('gemini'));
-  assert.equal(route('query', { ...both, overrides: { query: 'gemini' } }).ok, true);
-  assert.equal(route('query', { ...both, overLimit: ['claude-code'] }).ok, true);
+test('읽기 경로는 Gemini 로 안 간다 — 붙어 놓고 도구를 안 부른다', () => {
+  // 2026-09-10 사내 W3c: 신뢰 게이트는 풀렸는데 모델이 도구를 안 불렀다 (ROADMAP §24).
+  // MCP 가 꺼진 것은 stderr 로 알아채고 버릴 수 있지만 붙어 놓고 안 쓴 것은 못 알아챈다.
+  assert.ok(!MCP_CAPABLE.includes('gemini'));
+  assert.equal(route('query', { ...both, overrides: { query: 'gemini' } }).ok, false);
+  // 상한에 걸려도 대신 보내지 않는다. 안 도는 편이 낫다
+  assert.equal(route('query', { ...both, overLimit: ['claude-code'] }).ok, false);
 });
 
 test('lint 는 확인된 공급자로만 당겨 간다 — 되던 밀어 넣기를 안 바꾼다', () => {

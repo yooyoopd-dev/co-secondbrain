@@ -167,6 +167,52 @@ export function validateAnchors(
 }
 
 /**
+ * 없는 앵커 인용을 변경안에서 지운다. 검토 화면의 [없는 앵커 지우기] 가 부른다.
+ *
+ * **관문 5 를 느슨하게 하지 않는다.** 사람이 손으로 하던 편집을 앱이 대신할 뿐이고,
+ * 결과는 다시 관문 일곱 개를 전부 통과해야 한다. 사내 1회차에서 Gemini 가 낸 변경안에
+ * 없는 앵커가 많아 사람이 본문에서 하나씩 찾아 지워야 승인이 됐다 (ROADMAP §24).
+ *
+ * 본문 인용은 그 표기만 지우고 문장은 남긴다. front-matter 의 주장은 **통째로 뺀다** —
+ * 출처 없는 주장은 관문 4 에서 어차피 막히고, 근거를 잃은 문장을 위키에 남기면 안 된다.
+ */
+export function repairAnchors(
+  cs: ChangeSet,
+  known: ReadonlyMap<string, ReadonlySet<string>>,
+): { changeSet: ChangeSet; removed: number } {
+  const alive = (sourceId: string, locator: string) => known.get(sourceId)?.has(locator) === true;
+  let removed = 0;
+
+  const ops = cs.ops.map((op) => {
+    if (!op.content) return op;
+    let page;
+    try {
+      page = parsePage(op.content);
+    } catch {
+      return op; // 관문 1 이 잡는다. 여기서 손대지 않는다
+    }
+    let touched = 0;
+    const body = page.body.replace(/\[\^([a-z0-9가-힣-]+)#([^\]]+)\](?!:)/gi, (m, sourceId: string, locator: string) => {
+      if (alive(sourceId, locator)) return m;
+      touched += 1;
+      return '';
+    });
+    const claims = page.front.claims.filter((c) => {
+      if (!c.source) return true;
+      const [sourceId, ...rest] = c.source.split('#');
+      if (alive(sourceId!, rest.join('#'))) return true;
+      touched += 1;
+      return false;
+    });
+    if (touched === 0) return op;
+    removed += touched;
+    return { ...op, content: serializePage({ front: { ...page.front, claims }, body }) };
+  });
+
+  return { changeSet: { ...cs, ops }, removed };
+}
+
+/**
  * 관문 9 의 근거. `extracted/` 가 진실이다.
  *
  * 인자로 받지 않고 **여기서 직접 읽는다.** 넘기는 자리를 하나라도 빠뜨리면 관문이

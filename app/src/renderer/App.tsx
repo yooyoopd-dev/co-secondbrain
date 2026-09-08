@@ -266,6 +266,18 @@ export default function App() {
     }
   };
 
+  /** 없는 앵커 인용을 앱이 지운다. 사람이 본문에서 하나씩 찾아 지우던 일이다 */
+  const repairAnchors = async () => {
+    setBusy(true);
+    try {
+      const r = await window.sb.repairAnchors();
+      setReview(r.review);
+      setReviewNote(`없는 앵커 ${r.removed}건을 지웠습니다. 관문을 다시 돌린 결과입니다`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // 고친 내용은 관문을 다시 통과해야 한다. main 이 재검사한 결과로 화면을 갈아 끼운다.
   const editOp = async (path: string, content: string) => {
     setBusy(true);
@@ -692,6 +704,7 @@ export default function App() {
           onCancel={discardReview}
           onJump={(sourceId, locator) => void jump(sourceId, locator)}
           onEdit={(path, content) => void editOp(path, content)}
+          onRepair={() => void repairAnchors()}
         />
       )}
       {settings && (

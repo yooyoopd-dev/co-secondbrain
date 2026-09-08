@@ -56,14 +56,24 @@ export const SCHEMA_ENFORCING: readonly ProviderId[] = ['claude-code', 'codex'];
  * "folder is untrusted" 로 MCP 를 끄고, `--skip-trust` 는 대화형 확인만 건너뛴다.
  * 신뢰 판정이 사용자 수준 설정에 있어서 앱이 어쩌지 못했다 (M2-PLAN.md §12.2).
  *
- * **2026-09-09 에 사용자가 사내 PC 의 전역 설정에 `security.folderTrust.enabled: false`
- * 를 넣었다.** 그래서 여기에 넣는다. 그 설정이 없는 기계에서는 Gemini 어댑터가
- * `mcpDisabled` 로 알아채고 **답을 받아도 버린다** — 위키를 안 읽고 답한 것을 사람이
- * 구별할 방법이 없기 때문이다.
+ * 2026-09-09 에 사용자가 사내 PC 의 전역 설정에 `security.folderTrust.enabled: false` 를
+ * 넣었고, 그것으로 **신뢰 게이트는 풀렸다.** 그래서 한동안 여기에 Gemini 를 넣어 뒀다.
+ *
+ * **2026-09-10 사내 측정에서 다시 뺐다.** W3c 결과가 이렇게 나왔다.
+ *
+ * ```
+ * PASS  폴더 신뢰가 MCP 를 끄지 않는다
+ * FAIL  모델이 내장 서버의 도구를 불렀다
+ * ```
+ *
+ * 서버는 붙었는데 모델이 도구를 안 부른다. 이것이 `mcpDisabled` 보다 나쁘다 —
+ * MCP 가 꺼진 것은 stderr 로 알아채고 답을 버릴 수 있지만, **붙어 놓고 안 쓴 것은
+ * 알아챌 방법이 없다.** 그대로 두면 위키를 안 읽고 아는 대로 답한 것이 인용까지 달고
+ * 화면에 뜬다. 기대에 맞게 규칙을 고치지 않는다 (CLAUDE.md §9).
  *
  * Codex 는 아직 확인하지 못했다. 확인 전에는 넣지 않는다.
  */
-export const MCP_CAPABLE: readonly ProviderId[] = ['claude-code', 'gemini'];
+export const MCP_CAPABLE: readonly ProviderId[] = ['claude-code'];
 
 /**
  * MCP 왕복을 **실제로 확인한** 공급자. 되던 경로를 바꿔도 되는지를 정한다.

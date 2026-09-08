@@ -146,7 +146,8 @@ function parseClaims(v: unknown): Claim[] {
     }
     const claim: Claim = {
       text: String(o['text'] ?? ''),
-      source: typeof o['source'] === 'string' ? o['source'] : null,
+      // 읽는 자리에서 한 번 맞춘다. 검사하는 자리마다 맞추면 한 곳을 빠뜨린다
+      source: typeof o['source'] === 'string' ? normalizeAnchor(o['source']) : null,
       confidence,
     };
     if (confidence === 'INFERRED') {
@@ -193,6 +194,20 @@ export function serializePage(page: Page): string {
 /* ---------- 본문에서 뽑는 것들 (전부 결정론적) ---------- */
 
 /** 앵커 인용 `[^src-kickoff#slide-12]`. 각주 정의(`[^x]:`)는 제외한다. */
+/**
+ * 앵커 인용을 한 가지 모양으로 맞춘다. `src-x#slide-1` 만 남긴다.
+ *
+ * 모델이 본문 표기를 그대로 베껴 `[^src-x#slide-1]` 이나 `^src-x#slide-1` 을 적는다.
+ * 사내 1회차에서 Gemini 와 Qwen2.5 둘 다 그랬다 (ROADMAP §24). 내용은 맞는데 표기만
+ * 다른 것을 형식 오류로 막으면 사람이 손으로 고쳐야 한다. 그건 우리 쪽 결함이다.
+ *
+ * **없는 앵커를 통과시키지는 않는다.** 여기서 하는 것은 껍데기를 벗기는 일뿐이고
+ * 실재 판정은 관문 5 가 그대로 한다.
+ */
+export function normalizeAnchor(raw: string): string {
+  return raw.trim().replace(/^\[+/, '').replace(/\^+/, '').replace(/\]+$/, '').trim();
+}
+
 export function citations(body: string): { sourceId: string; locator: string }[] {
   const out: { sourceId: string; locator: string }[] = [];
   for (const m of body.matchAll(/\[\^([a-z0-9가-힣-]+)#([^\]]+)\](?!:)/gi)) {

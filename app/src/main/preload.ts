@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('sb', {
   },
   taskProviders: () => ipcRenderer.invoke(IPC.taskProviders),
   editOp: (path: string, content: string) => ipcRenderer.invoke(IPC.editOp, path, content),
+  repairAnchors: () => ipcRenderer.invoke(IPC.repairAnchors),
   spendStatus: () => ipcRenderer.invoke(IPC.spendStatus),
   plan: () => ipcRenderer.invoke(IPC.plan),
   ask: (q: string) => ipcRenderer.invoke(IPC.ask, q),

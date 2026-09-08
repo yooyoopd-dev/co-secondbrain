@@ -5,7 +5,7 @@
 //
 // 근거는 페이지 경로가 아니라 **앵커 인용**으로 받는다. 페이지 경로만 받으면 보관된
 // synthesis 페이지의 주장에 출처가 없어 관문 4 에서 막힌다.
-import { serializePage, type Claim } from './page.ts';
+import { normalizeAnchor, serializePage, type Claim } from './page.ts';
 import { pageSlug } from './security.ts';
 import type { ChangeSet } from './changeset.ts';
 
@@ -66,14 +66,16 @@ export function parseAnswer(data: unknown): { answer: Answer | null; reason: str
   const d = data as Partial<Answer> | null;
   if (!d || typeof d.answer !== 'string' || !d.answer.trim()) return { answer: null, reason: '답변이 비었습니다' };
   if (!Array.isArray(d.claims) || d.claims.length === 0) return { answer: null, reason: '근거가 없습니다' };
-  for (const [i, c] of d.claims.entries()) {
+  // 모델이 본문 표기를 그대로 베껴 `[^src-x#s-1]` 을 적는 일이 잦다. 껍데기를 벗기고 본다
+  const claims = d.claims.map((c) => (c && typeof c.source === 'string' ? { ...c, source: normalizeAnchor(c.source) } : c));
+  for (const [i, c] of claims.entries()) {
     if (typeof c?.text !== 'string' || !c.text.trim()) return { answer: null, reason: `claims[${i}] 에 문장이 없습니다` };
     if (typeof c?.source !== 'string' || !ANCHOR_RE.test(c.source)) {
       return { answer: null, reason: `claims[${i}].source 가 앵커 형식이 아닙니다: ${c.source}` };
     }
   }
   return {
-    answer: { answer: d.answer.trim(), claims: d.claims, pages: Array.isArray(d.pages) ? d.pages : [] },
+    answer: { answer: d.answer.trim(), claims, pages: Array.isArray(d.pages) ? d.pages : [] },
     reason: null,
   };
 }

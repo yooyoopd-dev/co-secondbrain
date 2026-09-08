@@ -8,7 +8,7 @@ import { CORE_CONTEXT_PATH, EMPTY_CORE_CONTEXT, coreContextBlock, parseCoreConte
 import { extractFile, buildThreads } from '../core/extract/index.ts';
 import { extractEmail, type MailMeta } from '../core/extract/email.ts';
 import { safeJoin } from '../core/security.ts';
-import { applyChangeSet, currentHash, type ApplyResult, type ChangeSet } from '../core/changeset.ts';
+import { applyChangeSet, currentHash, repairAnchors, type ApplyResult, type ChangeSet } from '../core/changeset.ts';
 import { buildReview, editOp, selectOps, type Review } from '../core/review.ts';
 import { snapshot } from '../core/history.ts';
 import { readWikiPages, writeIndex } from '../core/wiki.ts';
@@ -667,6 +667,20 @@ export class Store {
    * 검토 화면에서 사람이 고친 내용을 반영한다. **관문을 다시 돌린다** —
    * 앞머리를 깨거나 없는 앵커를 넣으면 승인이 막힌다.
    */
+  /**
+   * 없는 앵커 인용을 지우고 관문을 다시 돌린다. 사람이 손으로 하던 편집을 대신한다.
+   *
+   * 관문을 느슨하게 하지 않는다 — 지운 결과가 다시 일곱 개를 전부 통과해야 한다.
+   */
+  async repairAnchors(): Promise<{ review: Review; removed: number }> {
+    const v = this.#require();
+    if (!this.#pending) throw new Error('검토 중인 변경안이 없습니다');
+    const anchors = await this.#anchors();
+    const r = repairAnchors(this.#pending, anchors);
+    this.#pending = r.changeSet;
+    return { review: await buildReview(v, this.#pending, anchors), removed: r.removed };
+  }
+
   async editOp(path: string, content: string): Promise<Review> {
     const v = this.#require();
     if (!this.#pending) throw new Error('검토 중인 변경안이 없습니다');

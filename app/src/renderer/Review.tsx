@@ -33,6 +33,7 @@ export default function ReviewOverlay({
   onCancel,
   onJump,
   onEdit,
+  onRepair,
 }: {
   review: Review;
   busy: boolean;
@@ -45,6 +46,8 @@ export default function ReviewOverlay({
   onJump: (sourceId: string, locator: string) => void;
   /** 고친 내용을 저장하면 관문을 다시 돌린 검토 결과가 온다 */
   onEdit: (path: string, content: string) => void;
+  /** 없는 앵커 인용을 한 번에 지운다. 관문은 그대로 다시 돈다 */
+  onRepair: () => void;
 }) {
   // 문제가 있는 카드는 처음부터 보류다. 사람이 일부러 승인 목록에 넣어야 한다.
   const [approved, setApproved] = useState<string[]>(() =>
@@ -56,6 +59,8 @@ export default function ReviewOverlay({
   const bodyRef = useRef<HTMLDivElement>(null);
 
   const blocked = applyBlocker(review, approved);
+  // 관문 5 만 따로 센다. 이것만은 앱이 대신 지울 수 있다 — 나머지 위반은 사람이 판단해야 한다
+  const badAnchors = review.ops.reduce((n, o) => n + o.violations.filter((x) => x.gate === 5).length, 0);
   const flagged = approved.length - dropFlagged(review, approved).length;
   const toggle = (p: string) => setApproved((cur) => (cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p]));
 
@@ -85,6 +90,15 @@ export default function ReviewOverlay({
               ) : (
                 <span style={S.blockedText}>{blocked.reason}</span>
               ))}
+            {badAnchors > 0 && (
+              <button
+                disabled={busy}
+                onClick={onRepair}
+                title="원본에 없는 앵커 인용을 지웁니다. 관문은 그대로 다시 돕니다"
+              >
+                없는 앵커 {badAnchors}건 지우기
+              </button>
+            )}
             {flagged > 0 && (
               <button disabled={busy} onClick={() => setApproved(dropFlagged(review, approved))}>
                 문제 있는 {flagged}건 빼기

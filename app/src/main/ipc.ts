@@ -205,6 +205,8 @@ export interface SbApi {
   taskProviders(): Promise<TaskProviders>;
   /** 검토 화면에서 고친 내용을 반영하고 관문을 다시 돌린다 */
   editOp(path: string, content: string): Promise<Review>;
+  /** 없는 앵커 인용을 지우고 관문을 다시 돌린다. 관문은 그대로다 */
+  repairAnchors(): Promise<{ review: Review; removed: number }>;
   /** 공급자별 이번 달 소비와 남은 문서 수 */
   spendStatus(): Promise<Status[]>;
   /** 아직 변경안을 안 만든 원본. 이름만 바뀐 것은 빠진다 */
@@ -289,6 +291,7 @@ export const IPC = {
   agentOutput: 'sb:agentOutput',
   taskProviders: 'sb:taskProviders',
   editOp: 'sb:editOp',
+  repairAnchors: 'sb:repairAnchors',
   spendStatus: 'sb:spendStatus',
   plan: 'sb:plan',
   ask: 'sb:ask',
