@@ -102,8 +102,14 @@ export interface AppSettings {
   /** 열려 있는 Vault 의 폴더. 안 열었으면 null */
   vaultRoot: string | null;
   vaultTitle: string | null;
-  /** 개인 Vault 인가. 안 열었으면 null */
-  personal: boolean | null;
+  /**
+   * 허브에 붙은 CO 영역인가. 안 열었으면 null.
+   *
+   * **좌측 레일과 같은 규칙(`config.hub`)을 쓴다.** 전에는 여기만 `id === 'personal'`
+   * 로 봤는데, 화면에서 만든 Vault 는 id 가 폴더 이름이라 개인 Vault 도 전부 CO 영역으로
+   * 나왔다. 판정이 두 벌이면 둘 중 하나는 반드시 틀린다.
+   */
+  co: boolean | null;
   /** 사용자가 고정한 공급자. null 이면 작업 종류별 라우팅 */
   provider: ProviderId | null;
   providers: { id: ProviderId; label: string; note: string; installed: boolean }[];
@@ -130,6 +136,8 @@ export interface SbApi {
   /** 받은 편지함에서 아직 안 넣은 것만 넣는다 */
   ingestInbox(classification: Classification): Promise<IngestResult>;
   listSources(): Promise<SourceSummary[]>;
+  /** 위키가 실제로 인용하고 있는 원본 id. 목록의 반영 표시가 이걸 본다 */
+  citedSources(): Promise<string[]>;
   search(query: string): Promise<SearchHit[]>;
   readSource(sourceId: string): Promise<Extraction | null>;
   /** 원본 하나로 ChangeSet 을 만들어 검토 화면 재료를 돌려준다. 디스크는 안 바뀐다 */
@@ -217,6 +225,7 @@ export const IPC = {
   inbox: 'sb:inbox',
   ingestInbox: 'sb:ingestInbox',
   listSources: 'sb:listSources',
+  citedSources: 'sb:citedSources',
   search: 'sb:search',
   readSource: 'sb:readSource',
   propose: 'sb:propose',

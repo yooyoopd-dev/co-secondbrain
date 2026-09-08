@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('sb', {
   inbox: () => ipcRenderer.invoke(IPC.inbox),
   ingestInbox: (classification: string) => ipcRenderer.invoke(IPC.ingestInbox, classification),
   listSources: () => ipcRenderer.invoke(IPC.listSources),
+  citedSources: () => ipcRenderer.invoke(IPC.citedSources),
   search: (q: string) => ipcRenderer.invoke(IPC.search, q),
   readSource: (id: string) => ipcRenderer.invoke(IPC.readSource, id),
   propose: (id: string) => ipcRenderer.invoke(IPC.propose, id),

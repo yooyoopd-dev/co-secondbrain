@@ -58,6 +58,21 @@ export function responseOf(stdout) {
   return stdout;
 }
 
+/**
+ * 오류 봉투를 사람 말로 옮긴다. **오류 봉투는 stdout 이 아니라 stderr 로 오고
+ * 종료 코드가 41 이다** (0.58.0 실측, `app/src/core/agent/gemini.ts` parseEnvelope).
+ * 그 사유를 안 읽으면 "모델이 도구를 안 불렀다" 와 "CLI 가 못 떴다" 가 같아 보인다.
+ */
+export function errorOf(stderr) {
+  try {
+    const j = JSON.parse(stderr.trim());
+    if (j?.error) return `${j.error.message ?? '알 수 없는 오류'} (code=${j.error.code ?? '?'})`;
+  } catch {
+    /* 봉투가 아니면 아래에서 원문을 그대로 낸다 */
+  }
+  return null;
+}
+
 let fails = 0;
 function ok(name, cond) {
   console.log(`${cond ? 'PASS' : 'FAIL'}  ${name}`);
@@ -74,6 +89,11 @@ if (process.argv.includes('--selftest')) {
   ok('무관한 경고는 안 잡는다', !mcpDisabled('deprecated flag'));
   ok('봉투에서 본문을 꺼낸다', responseOf(JSON.stringify({ response: '가' })) === '가');
   ok('봉투가 아니면 그대로 본다', responseOf('가') === '가');
+  ok(
+    '오류 봉투에서 사유를 꺼낸다',
+    errorOf(JSON.stringify({ error: { message: '인증이 없습니다', code: 41 } })) === '인증이 없습니다 (code=41)',
+  );
+  ok('봉투가 아닌 stderr 은 null 이다', errorOf('그냥 경고') === null);
   process.exit(fails === 0 ? 0 : 1);
 }
 
@@ -135,8 +155,28 @@ console.log('');
 
 // 아무것도 안 나왔으면 판정이 아니다. CLI 가 안 뜬 것과 모델이 못 부른 것을 가른다.
 if (!body.trim()) {
-  console.error('CLI 가 출력을 안 냈습니다. 인증과 판을 확인하십시오. 이 회차는 표본이 아닙니다.');
-  console.error(r.stderr.trim().slice(0, 400));
+  const why = errorOf(r.stderr);
+  console.error('CLI 가 답을 안 냈습니다. 이 회차는 표본이 아닙니다.');
+  console.error(why ? `사유: ${why}` : r.stderr.trim().slice(0, 800) || '(stderr 가 비어 있습니다)');
+  if (why) console.error('code=41 은 Gemini 의 오류 봉투입니다 — 인증이나 쿼터를 보십시오. MCP 와 무관합니다.');
+  process.exit(2);
+}
+
+// **종료 코드가 0 이 아니면 판정하지 않는다.**
+//
+// 2026-09-09 1회차에서 `안 껐음 / 못 불렀음 / 41` 이 나왔다. 그 상태로는 모델이
+// 도구를 안 부른 것인지 CLI 가 중간에 죽은 것인지 가를 수 없다. 죽은 회차를
+// "Gemini 는 MCP 에 못 붙는다" 로 세면 사실이 아닌 것을 기록하게 된다.
+// 그래서 stderr 를 그대로 내고 판정을 비운다.
+if (r.code !== 0) {
+  console.error(`CLI 가 ${r.code} 로 끝났습니다. 이 회차는 표본이 아닙니다.`);
+  const why = errorOf(r.stderr);
+  if (why) console.error(`사유: ${why}`);
+  console.error('아래는 CLI 가 낸 그대로입니다. 사내 문서가 아니라 도구 메시지입니다.');
+  console.error('---');
+  console.error(r.stderr.trim().slice(0, 1200) || '(stderr 가 비어 있습니다)');
+  console.error('---');
+  console.error(`받은 답: ${body.trim().slice(0, 200)}`);
   process.exit(2);
 }
 

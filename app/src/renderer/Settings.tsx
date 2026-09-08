@@ -35,7 +35,8 @@ export function SettingsPanel({
         ) : (
           <>
             <Row label="이름" value={settings.vaultTitle ?? ''} />
-            <Row label="종류" value={settings.personal ? '개인 Vault' : 'CO 영역'} />
+            {/* 좌측 레일의 배지와 같은 값이어야 한다. 두 자리가 다르게 말하면 둘 다 못 믿는다 */}
+            <Row label="종류" value={settings.co ? 'CO 영역' : '개인 Vault'} />
             {/* 경로는 길다. 줄바꿈을 막지 않는다 — 잘라 놓으면 옮겨 적을 수가 없다 */}
             <Row label="폴더" value={settings.vaultRoot} mono />
           </>

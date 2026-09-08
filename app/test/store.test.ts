@@ -108,20 +108,60 @@ test('원본 전문을 앵커째로 되읽을 수 있다 (원문 뷰어용)', as
 
 /* ---------------- 설정 · 내 맥락 ---------------- */
 
+/** 위키 페이지 한 장을 디스크에 놓는다. citedSources 는 파일만 본다. */
+async function putPage(root: string, name: string, body: string, claimSource: string | null = null): Promise<void> {
+  const front = [
+    '---',
+    `id: ent-${name}`,
+    'type: entity',
+    `title: ${name}`,
+    'summary: 요약.',
+    'classification: internal',
+    ...(claimSource ? ['claims:', '  - text: 주장.', `    source: ${claimSource}`, '    confidence: EXTRACTED'] : []),
+    'generated_by: claude-code',
+    'updated: 2026-09-05T00:00:00.000Z',
+    'updated_by: app',
+    '---',
+  ].join('\n');
+  await fs.mkdir(path.join(root, '02_NOTES/entities'), { recursive: true });
+  await fs.writeFile(path.join(root, `02_NOTES/entities/${name}.md`), `${front}\n\n${body}\n`, 'utf8');
+}
+
+test('반영 표시는 제안이 아니라 위키의 인용을 본다', async () => {
+  const { s, root } = await opened();
+  // 인제스트만 한 상태. 아직 위키에 아무것도 없다.
+  await s.ingest([f('kickoff.docx'), f('meeting.vtt')]);
+  assert.deepEqual(await s.citedSources(), []);
+
+  // 본문에서 인용한 것과 front-matter 의 claims 로만 인용한 것 둘 다 잡는다.
+  await putPage(root, '가', '주 협력사다.[^src-kickoff#slide-3]');
+  await putPage(root, '나', '본문에는 인용이 없다.', 'src-meeting#t-1');
+  assert.deepEqual((await s.citedSources()).sort(), ['src-kickoff', 'src-meeting']);
+  s.close();
+});
+
 test('설정은 Vault 경로와 판을 준다. 안 열었으면 null 이다', async () => {
   const s = new Store();
   const before = await s.settings('9.9.9');
   assert.equal(before.version, '9.9.9');
   assert.equal(before.vaultRoot, null);
-  assert.equal(before.personal, null);
+  assert.equal(before.co, null);
 
   const root = await tmp();
   await s.open(root, { id: 'personal', title: '개인 Vault' });
   const after = await s.settings('9.9.9');
   assert.equal(after.vaultRoot, root);
   assert.equal(after.vaultTitle, '개인 Vault');
-  assert.equal(after.personal, true);
+  assert.equal(after.co, false);
   assert.deepEqual(after.providers.map((p) => p.id), ['claude-code', 'gemini', 'codex']);
+});
+
+test('화면이 만든 Vault 는 id 가 폴더 이름이어도 개인으로 나온다', async () => {
+  // main.ts 의 pickVault 는 `{ id: 폴더이름 }` 으로 만든다. 종류를 `id === 'personal'`
+  // 로 보던 때는 이 Vault 가 전부 CO 영역으로 나왔다. 이제 허브 부착 여부로 본다.
+  const s = new Store();
+  await s.open(await tmp(), { id: '내문서', title: '내문서' });
+  assert.equal((await s.settings('9.9.9')).co, false);
 });
 
 test('Vault 를 닫으면 설정에서도 사라진다', async () => {

@@ -65,8 +65,11 @@ test('남은 예산을 문서 수로 환산한다 — 화면에는 달러 대신
   assert.equal(status(spent(49.95), L, 'claude-code', NOW).documentsLeft, 0); // 콜드 한 건도 안 된다
 });
 
-test('한 줄 요약은 문서 수를 먼저 말한다', () => {
-  assert.match(summarize(status(spent(0), L, 'claude-code', NOW)), /남은 문서 약 \d+건/);
+test('한 줄 요약은 쓴 돈만 말한다. 남은 문서 수는 안 적는다', () => {
+  const s0 = summarize(status(spent(0), L, 'claude-code', NOW));
+  assert.match(s0, /\$0\.00 \/ \$50/);
+  // 추정치를 건수로 바꾸면 실제보다 정확해 보인다. 화면에서 뺐다 (core/spend.ts).
+  assert.doesNotMatch(s0, /남은 문서/);
   assert.match(summarize(status(spent(50), L, 'claude-code', NOW)), /상한 도달/);
   assert.match(summarize(status(spent(1), {}, 'claude-code', NOW)), /상한 미입력/);
 });

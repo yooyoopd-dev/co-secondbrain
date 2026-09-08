@@ -76,7 +76,7 @@ export interface Status {
   /** 상한을 모르면 null */
   pct: number | null;
   level: Level;
-  /** 남은 예산으로 몇 건. 화면에는 달러 대신 이걸 띄운다 (M2-PLAN.md §3.4) */
+  /** 남은 예산으로 몇 건. 지금 화면은 안 쓴다 — `summarize` 주석을 보라 */
   documentsLeft: number | null;
 }
 
@@ -100,12 +100,18 @@ export function status(log: SpendLog, limits: Limits, provider: ProviderId, now:
   };
 }
 
-/** 사람에게 보여줄 한 줄. 달러가 아니라 문서 수가 앞에 온다. */
+/**
+ * 사람에게 보여줄 한 줄. **쓴 돈만 적는다.**
+ *
+ * 전에는 `남은 문서 약 N건` 을 앞에 뒀다 (M2-PLAN.md §3.4). 뺀 이유는 그 숫자가
+ * 문서당 단가 표본 몇 건에서 나온 추정이라, 건수로 바꾸면 실제보다 정확해 보이기
+ * 때문이다. `documentsLeft` 는 계속 계산해 둔다 — 지금 화면에 안 쓸 뿐이고,
+ * 다시 띄우기로 하면 그 값이 그대로 있다.
+ */
 export function summarize(s: Status): string {
   if (s.level === 'unknown') return `${s.provider} · 이번 달 $${s.spentUsd.toFixed(2)} · 상한 미입력`;
-  const left = s.documentsLeft ?? 0;
-  const head = s.level === 'over' ? '상한 도달' : `남은 문서 약 ${left}건`;
-  return `${s.provider} · ${head} · $${s.spentUsd.toFixed(2)} / $${s.limitUsd?.toFixed(0)}`;
+  const head = s.level === 'over' ? '상한 도달 · ' : '';
+  return `${s.provider} · ${head}$${s.spentUsd.toFixed(2)} / $${s.limitUsd?.toFixed(0)}`;
 }
 
 /** 배치를 시작하기 전에 쓸 예산. 상한을 모르면 제한하지 않는다. */

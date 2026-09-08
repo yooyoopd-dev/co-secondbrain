@@ -86,6 +86,8 @@ export default function App() {
   const [mdView, setMdView] = useState<MdView>('render');
   // 어느 CLI 가 무엇을 맡는지. 누르기 전에 화면에 적어 둔다
   const [providers, setProviders] = useState<TaskProviders | null>(null);
+  // 위키가 실제로 인용하고 있는 원본. 목록에 반영 표시를 그린다
+  const [cited, setCited] = useState<ReadonlySet<string>>(new Set());
   // 전체 보류해 둔 변경안. `.sb/` 에 있고 다시 열어야 관문을 거친다
   const [held, setHeld] = useState<HeldReviewInfo | null>(null);
   const [heldApproved, setHeldApproved] = useState<readonly string[] | undefined>(undefined);
@@ -117,6 +119,7 @@ export default function App() {
     setInbox(await window.sb.inbox());
     setHeld(await window.sb.heldReview());
     setProviders(await window.sb.taskProviders());
+    setCited(new Set(await window.sb.citedSources()));
     await pullLogs();
   }, [pullLogs]);
 
@@ -402,9 +405,14 @@ export default function App() {
 
   const openSettings = async () => setSettings(await window.sb.settings());
 
+  /**
+   * 쓸 CLI 를 바꾼다. **버튼에 적힌 이름도 여기서 같이 갱신한다** — 전에는 다음
+   * `refresh()` 까지 옛 이름이 남아서, 무언가 한 번 실행해야 바뀌는 것처럼 보였다.
+   */
   const pickProvider = async (id: ProviderId | null) => {
     await window.sb.setProvider(id);
     setSettings(await window.sb.settings());
+    setProviders(await window.sb.taskProviders());
   };
 
   /**
@@ -544,6 +552,8 @@ export default function App() {
         onCloseVault={() => void closeVault()}
         onQuit={() => void quit()}
         onSelect={(id) => jump(id, null)}
+        cited={cited}
+        onRefresh={() => void refresh()}
         spend={spend}
         pending={pending}
         onLint={async () => setEstimate(await window.sb.estimateJudgment())}
@@ -583,8 +593,16 @@ export default function App() {
         onMdView={setMdView}
         ingestProvider={providers?.ingest}
       />
-      {run && <RunBar run={run} onCancel={() => void cancelRun()} />}
-      {report && <ReportToast report={report} onClose={() => setReport(null)} />}
+      {/*
+        둘 다 화면 아래에 뜬다. 전에는 진행 막대가 가운데, 인제스트 결과가 오른쪽이라
+        창이 좁으면 겹쳤다. 한 칸에 세로로 쌓으면 어느 폭에서도 안 겹친다.
+      */}
+      {(run || report) && (
+        <div style={S.bottomStack}>
+          {report && <ReportToast report={report} onClose={() => setReport(null)} />}
+          {run && <RunBar run={run} onCancel={() => void cancelRun()} />}
+        </div>
+      )}
       {syncOpen && hub && (
         <SyncPanel
           status={hub}
@@ -717,6 +735,8 @@ function Rail({
   onCloseVault,
   onQuit,
   onSelect,
+  cited,
+  onRefresh,
   spend,
   pending,
   onLint,
@@ -741,6 +761,9 @@ function Rail({
   onCloseVault: () => void;
   onQuit: () => void;
   onSelect: (id: string) => void;
+  /** 위키가 인용하고 있는 원본 id. 여기 있으면 반영된 것이다 */
+  cited: ReadonlySet<string>;
+  onRefresh: () => void;
   spend: Status[];
   pending: number | null;
   onLint: () => void;
@@ -789,17 +812,18 @@ function Rail({
             <Icon name="plus" /> 문서 추가
           </button>
         </div>
-        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-          <button style={{ flex: 1 }} disabled={busy} onClick={onLint} title="LLM 판단 검사 4종">
+        {/*
+          셋을 한 줄에 같은 폭으로 둔다. 아래 [설정] 줄과 같은 글자 크기라 레일에서
+          두 줄이 같은 무게로 읽힌다 — 여기는 전부 이 Vault 안에서 하는 일이다.
+        */}
+        <div style={S.railActions}>
+          <button style={S.railAction} disabled={busy} onClick={onLint} title="LLM 판단 검사 4종">
             판단 검사
           </button>
-          <button style={{ flex: 1 }} disabled={busy} onClick={onExport} title="Marp 슬라이드로 내보내기">
-            슬라이드
+          <button style={S.railAction} disabled={busy} onClick={onExport} title="Marp 슬라이드로 내보내기">
+            내보내기
           </button>
-        </div>
-        {/* 중복 후보는 돈이 안 드는 계산 검사라 판단 검사와 줄을 나눈다 */}
-        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-          <DedupButton count={null} busy={busy} onClick={onDedup} />
+          <DedupButton count={null} busy={busy} onClick={onDedup} style={S.railAction} />
         </div>
         {/*
           보류해 둔 변경안. 돈을 이미 쓴 결과라 눈에 띄어야 한다 — 설정 안에 묻으면
@@ -835,8 +859,15 @@ function Rail({
       <div style={S.railBody}>
         <InboxSection items={inbox} busy={busy} onIngest={onInbox} />
 
-        <div style={S.sectionLabel}>
-          원본 {sources.length}건{pending !== null && pending > 0 ? ` · 제안 대기 ${pending}건` : ''}
+        {/* 폴더를 앱 밖에서 고쳤을 때 다시 읽는 자리. 창을 껐다 켜지 않아도 된다 */}
+        <div style={S.sourcesHead}>
+          <span style={S.sectionLabel}>
+            원본 {sources.length}건{pending !== null && pending > 0 ? ` · 제안 대기 ${pending}건` : ''}
+          </span>
+          <button style={S.refresh} disabled={busy} onClick={onRefresh} title="원본과 받은 편지함을 다시 읽습니다">
+            <Icon name="refresh" size={13} />
+            새로 고침
+          </button>
         </div>
         {busy && sources.length === 0 && (
           <div style={{ padding: 'var(--s)' }}>
@@ -849,6 +880,7 @@ function Rail({
           <button key={s.sourceId} style={S.sourceRow} onClick={() => onSelect(s.sourceId)}>
             <span style={S.kindTag}>{s.kind}</span>
             <span style={S.sourceName}>{s.filename}</span>
+            <WikiMark cited={cited.has(s.sourceId)} />
             <ClassBadge value={s.classification} />
           </button>
         ))}
@@ -861,7 +893,11 @@ function Rail({
         )}
       </div>
 
-      {/* 달러가 아니라 남은 문서 수를 먼저 보여준다 (M2-PLAN.md §3.4) */}
+      {/*
+        이번 달 쓴 돈만 적는다. "남은 문서 약 N건" 은 뺐다 — 문서당 단가가 표본
+        몇 건에서 나온 값이라 건수로 바꾸면 실제보다 정확해 보인다 (M2-PLAN.md §3.4
+        의 판단을 사용자 요청으로 되돌린 것이다). 상한 대비 비율은 색으로 남는다.
+      */}
       <div style={S.spendBar}>
         {spend.map((s) => (
           <div key={s.provider} style={{ color: s.level === 'over' ? 'var(--danger)' : s.level === 'warn' ? 'var(--warn)' : 'var(--fg-faint)' }}>
@@ -916,6 +952,25 @@ function InboxSection({ items, busy, onIngest }: { items: InboxItem[]; busy: boo
         새 파일 {fresh.length}건 넣기
       </button>
     </section>
+  );
+}
+
+/**
+ * 이 원본이 위키에 들어갔는가.
+ *
+ * **"변경안을 만들었다" 가 아니라 "위키가 인용하고 있다" 를 본다** (store.citedSources).
+ * 제안만 하고 승인을 안 한 원본을 반영됨으로 그리면 표시가 거짓말이 된다.
+ * 아직 안 들어간 것은 흐린 점으로 둔다 — 안 그리면 목록이 들쭉날쭉해 보인다.
+ */
+function WikiMark({ cited }: { cited: boolean }) {
+  return cited ? (
+    <span style={{ ...S.wikiMark, color: 'var(--ok)' }} title="위키가 이 원본을 인용하고 있습니다">
+      <Icon name="check" size={13} />
+    </span>
+  ) : (
+    <span style={{ ...S.wikiMark, color: 'var(--fg-faint)' }} title="아직 위키에 안 들어갔습니다">
+      ·
+    </span>
   );
 }
 
@@ -1215,12 +1270,14 @@ function Viewer({
           {ext.kind} · {ext.chunks.length}개 조각 · 관계 {ext.relations.length}개
         </div>
         <div style={{ display: 'flex', gap: 'var(--s)', alignItems: 'center', marginTop: 8 }}>
+          {/* 옆의 [렌더링] 토글과 같은 글자 크기다. 머리글 줄에서 하나만 커 보이면 안 된다 */}
           <button
+            style={S.viewerAction}
             disabled={busy || ingestProvider?.ok === false}
             onClick={() => onPropose(ext.sourceId)}
             title={ingestProvider?.ok === false ? ingestProvider.reason : ingestProvider?.why}
           >
-            이 원본으로 위키 갱신{ingestProvider?.ok ? ` (${ingestProvider.provider})` : ''}
+            위키 갱신{ingestProvider?.ok ? ` (${ingestProvider.provider})` : ''}
           </button>
           <span style={{ flex: 1 }} />
           <MdToggle view={mdView} onChange={onMdView} />
@@ -1334,8 +1391,17 @@ const S = {
   },
   railBody: { overflowY: 'auto', flex: 1 },
   sectionLabel: { padding: '10px var(--s) 4px', fontSize: '0.8125rem', color: 'var(--fg-muted)', fontWeight: 500 },
+  sourcesHead: { display: 'flex', alignItems: 'center', paddingRight: 'var(--s)' },
+  refresh: {
+    marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4,
+    fontSize: '0.75rem', padding: '2px 8px', color: 'var(--fg-muted)', borderColor: 'var(--border)',
+  },
+  wikiMark: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, fontFamily: 'var(--mono)' },
+  // 판단 검사 · 내보내기 · 중복 후보. 아래 [설정] 줄과 같은 크기다
+  railActions: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: 6 },
+  railAction: { fontSize: '0.8125rem', padding: '4px 0', justifyContent: 'center', width: '100%' },
   sourceRow: {
-    display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 6, alignItems: 'center',
+    display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: 6, alignItems: 'center',
     width: '100%', textAlign: 'left', border: 'none', borderRadius: 'var(--r-input)',
     padding: '6px var(--s)', background: 'transparent',
   },
@@ -1375,9 +1441,13 @@ const S = {
   },
   resultTitle: { fontSize: '0.8125rem', color: 'var(--fg-muted)' },
 
-  run: {
+  // 화면 아래 가운데 한 칸. 진행 막대와 인제스트 결과가 여기 세로로 쌓인다.
+  bottomStack: {
     position: 'fixed', left: '50%', bottom: 20, transform: 'translateX(-50%)', zIndex: 9,
     width: 'min(620px, calc(100vw - 48px))',
+    display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'stretch',
+  },
+  run: {
     background: 'var(--bg-surface)', border: '1px solid var(--border)',
     borderRadius: 'var(--r-card)', boxShadow: 'var(--shadow-pop)', padding: 'var(--s)',
   },
@@ -1427,6 +1497,8 @@ const S = {
   viewer: { borderLeft: '1px solid var(--border)', overflowY: 'auto', background: 'var(--bg-surface)' },
   viewerHead: { padding: 'var(--s)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--bg-surface)' },
   viewerMeta: { fontSize: '0.8125rem', color: 'var(--fg-muted)' },
+  // Markdown.tsx 의 [렌더링]·[원본] 토글과 같은 크기
+  viewerAction: { fontSize: '0.75rem', padding: '2px 10px' },
   viewerNote: { marginTop: 8, fontSize: '0.8125rem', color: 'var(--fg-muted)' },
   warnBox: {
     marginTop: 6, padding: '6px 10px', borderRadius: 'var(--r-input)',
@@ -1437,7 +1509,6 @@ const S = {
 
   empty: { padding: 24, color: 'var(--fg-muted)', textAlign: 'center', fontSize: '0.875rem' },
   toast: {
-    position: 'fixed', right: 16, bottom: 16, maxWidth: 420,
     background: 'var(--bg-raised)', border: '1px solid var(--border)',
     borderRadius: 'var(--r-card)', padding: 12, boxShadow: 'var(--shadow-pop)',
   },

@@ -12,6 +12,7 @@ import { applyChangeSet, currentHash, type ApplyResult, type ChangeSet } from '.
 import { buildReview, editOp, selectOps, type Review } from '../core/review.ts';
 import { snapshot } from '../core/history.ts';
 import { readWikiPages, writeIndex } from '../core/wiki.ts';
+import { citations } from '../core/page.ts';
 import { createCli } from '../core/agent/index.ts';
 import { validateChangeSet } from '../core/agent/gemini.ts';
 import { DEFAULT_ROUTING, MCP_VERIFIED, route, type TaskKind } from '../core/agent/router.ts';
@@ -280,6 +281,27 @@ export class Store {
    * 원본 하나로 ChangeSet 을 받아 검토 재료를 만든다. **디스크는 건드리지 않는다.**
    * 실패해도 던지지 않는다 — 사유를 화면에 그대로 띄우는 편이 낫다.
    */
+  /**
+   * 위키가 실제로 인용하고 있는 원본 id. 좌측 목록의 반영 표시가 이걸 본다.
+   *
+   * **manifest 의 `proposedAt` 을 안 쓴다.** 그것은 "변경안을 만들었다" 이지
+   * "사람이 승인해서 위키에 들어갔다" 가 아니다. 승인 안 한 원본을 반영됨으로
+   * 그리면 표시가 거짓말이 된다. 페이지를 지우면 이 값도 저절로 빠진다.
+   *
+   * 위키 전체를 읽는다. `listSources` 안에 넣지 않고 따로 둔 이유가 그것이다 —
+   * 원본 목록만 필요한 자리(plan · 앵커 수집)까지 이 비용을 물면 안 된다.
+   */
+  async citedSources(): Promise<string[]> {
+    const v = this.#require();
+    const out = new Set<string>();
+    for (const e of (await readWikiPages(v)).entries) {
+      for (const c of citations(e.page.body)) out.add(c.sourceId);
+      // 앵커가 front-matter 의 claims 에만 있는 페이지도 있다 (wiki.ts 의 line 과 같은 규칙)
+      for (const c of e.page.front.claims) if (c.source?.includes('#')) out.add(c.source.split('#')[0]!);
+    }
+    return [...out];
+  }
+
   /** 무엇을 CLI 로 보내야 하는가. 이름만 바뀐 것과 이미 만든 것은 빠진다 (PLAN.md §9.1) */
   async plan(): Promise<WorkPlan> {
     const v = this.#require();
@@ -332,7 +354,7 @@ export class Store {
       version,
       vaultRoot: this.#vault?.root ?? null,
       vaultTitle: this.#vault?.config.title ?? null,
-      personal: this.#vault ? this.#vault.config.id === PERSONAL_ID : null,
+      co: this.#vault ? this.#vault.config.hub !== null : null,
       provider: this.#provider,
       providers: PROVIDERS.map((p) => ({ ...p, installed: installed.includes(p.id) })),
     };

@@ -160,6 +160,7 @@ function registerIpc(): void {
   handle(IPC.ingestInbox, (_e, classification: Classification) => store.ingestInbox(classification));
 
   handle(IPC.listSources, () => store.listSources());
+  handle(IPC.citedSources, () => store.citedSources());
   handle(IPC.search, (_e, q: string) => store.search(q));
   handle(IPC.readSource, (_e, id: string) => store.readSource(id));
 
