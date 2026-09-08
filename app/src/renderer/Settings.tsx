@@ -3,7 +3,8 @@
 // **판정은 여기서 하지 않는다.** 설치 여부도 저장도 main 이 한다. 이 파일은 받은 것을
 // 그리고 고른 것을 넘길 뿐이다.
 import { useEffect, useState } from 'react';
-import type { AppSettings, HubStatus } from '../main/ipc.ts';
+import type { AnswerWith, AppSettings, HubStatus, LocalInfo } from '../main/ipc.ts';
+import type { LocalConfig } from '../core/local/ollama.ts';
 import type { ProviderId } from '../core/agent/types.ts';
 import { CORE_CONTEXT_FIELDS, CORE_CONTEXT_PATH, type CoreContext } from '../core/context.ts';
 import { Icon } from './icons.tsx';
@@ -11,8 +12,12 @@ import { Icon } from './icons.tsx';
 export function SettingsPanel({
   settings,
   hub,
+  local,
   busy,
   onProvider,
+  onAnswerWith,
+  onLocalConfig,
+  onBuildVectors,
   onCore,
   onHub,
   onClose,
@@ -20,8 +25,13 @@ export function SettingsPanel({
   settings: AppSettings;
   /** 허브 상태. Vault 를 안 열었으면 null 이고 그때는 동기화 줄을 안 그린다 */
   hub: HubStatus | null;
+  /** 로컬 모델 상태. 네트워크를 타므로 늦게 오고, 오기 전에는 null 이다 */
+  local: LocalInfo | null;
   busy: boolean;
   onProvider: (id: ProviderId | null) => void;
+  onAnswerWith: (mode: AnswerWith) => void;
+  onLocalConfig: (cfg: LocalConfig) => void;
+  onBuildVectors: () => void;
   onCore: () => void;
   onHub: () => void;
   onClose: () => void;
@@ -88,6 +98,15 @@ export function SettingsPanel({
           </p>
         )}
       </section>
+
+      <LocalBlock
+        settings={settings}
+        local={local}
+        busy={busy}
+        onAnswerWith={onAnswerWith}
+        onLocalConfig={onLocalConfig}
+        onBuildVectors={onBuildVectors}
+      />
     </Shell>
   );
 }
@@ -193,6 +212,114 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
   );
 }
 
+/**
+ * [위키에 묻기] 만 로컬 모델로 돌리는 자리.
+ *
+ * **공급자 목록의 넷째 항목이 아니다.** 위의 LLM CLI 설정은 예산을 쓰는 외부 CLI 중에서
+ * 고르는 것이고 여기는 밖으로 보낼지 말지를 고른다. 위키 갱신은 이 값과 무관하게
+ * 늘 CLI 가 맡는다 — 파일을 고치는 제안이라 작은 모델로 먼저 시험할 자리가 아니다
+ * (docs/LOCAL-LLM.md §5 · §8).
+ */
+function LocalBlock({
+  settings,
+  local,
+  busy,
+  onAnswerWith,
+  onLocalConfig,
+  onBuildVectors,
+}: {
+  settings: AppSettings;
+  local: LocalInfo | null;
+  busy: boolean;
+  onAnswerWith: (mode: AnswerWith) => void;
+  onLocalConfig: (cfg: LocalConfig) => void;
+  onBuildVectors: () => void;
+}) {
+  const [draft, setDraft] = useState<LocalConfig>(settings.local);
+  useEffect(() => setDraft(settings.local), [settings.local]);
+  const dirty =
+    draft.host !== settings.local.host ||
+    draft.chatModel !== settings.local.chatModel ||
+    draft.embedModel !== settings.local.embedModel;
+
+  return (
+    <section style={S.block}>
+      <div style={S.blockHead}>위키에 묻기</div>
+      <Choice
+        name="answerWith"
+        checked={settings.answerWith === 'cli'}
+        disabled={busy}
+        onPick={() => onAnswerWith('cli')}
+        label="LLM CLI — 위의 설정을 따른다"
+        note="모델이 내장 MCP 서버로 위키를 직접 읽는다. 질문과 읽은 내용이 밖으로 나간다"
+      />
+      <Choice
+        name="answerWith"
+        checked={settings.answerWith === 'local'}
+        disabled={busy}
+        onPick={() => onAnswerWith('local')}
+        label="로컬 모델 (Ollama)"
+        note="앱이 위키에서 찾아 프롬프트에 넣고 이 컴퓨터의 모델을 한 번 부른다. 내용이 안 나가고 돈이 안 든다"
+      />
+
+      {settings.answerWith === 'local' && (
+        <>
+          <div style={S.rowButtons}>
+            <LocalField label="주소" value={draft.host} disabled={busy} onChange={(host) => setDraft({ ...draft, host })} />
+            <LocalField label="대화 모델" value={draft.chatModel} disabled={busy} onChange={(chatModel) => setDraft({ ...draft, chatModel })} />
+            <LocalField label="임베딩 모델" value={draft.embedModel} disabled={busy} onChange={(embedModel) => setDraft({ ...draft, embedModel })} />
+          </div>
+          <div style={S.rowButtons}>
+            <button disabled={busy || !dirty} onClick={() => onLocalConfig(draft)}>
+              <Icon name="save" /> 저장
+            </button>
+            <button
+              disabled={busy || !local?.status.ok || settings.vaultRoot === null}
+              onClick={onBuildVectors}
+            >
+              임베딩 만들기
+            </button>
+          </div>
+
+          {local === null ? (
+            <div style={S.dim}>Ollama 에 물어보는 중입니다…</div>
+          ) : local.status.ok ? (
+            <p style={S.note}>
+              {local.status.chat} · {local.status.embed} 를 찾았습니다. 위키 조각 {local.chunks}개 중
+              임베딩이 {local.vectors}개 있습니다.
+              {local.vectors === 0
+                ? ' 임베딩이 없으면 키워드로만 찾습니다 — 답은 나오지만 바꿔 말한 질문에 약합니다.'
+                : ''}
+            </p>
+          ) : (
+            <p style={S.warn}>{local.status.error}</p>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+/** 한 줄짜리 입력. 주소와 모델 이름만 받는다 */
+function LocalField({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  disabled: boolean;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label style={S.localField}>
+      <span style={S.fieldHint}>{label}</span>
+      <input type="text" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} style={S.localInput} />
+    </label>
+  );
+}
+
 /** 라디오 한 줄. 근거를 같이 보여준다 — 이름만 있으면 무엇이 다른지 모른다 */
 function Choice({
   checked,
@@ -200,16 +327,19 @@ function Choice({
   onPick,
   label,
   note,
+  name = 'provider',
 }: {
   checked: boolean;
   disabled: boolean;
   onPick: () => void;
   label: string;
   note: string;
+  /** 라디오 묶음 이름. 한 화면에 묶음이 둘이라 나눠야 한다 */
+  name?: string;
 }) {
   return (
     <label style={{ ...S.choice, opacity: disabled && !checked ? 0.5 : 1 }}>
-      <input type="radio" name="provider" checked={checked} disabled={disabled} onChange={onPick} />
+      <input type="radio" name={name} checked={checked} disabled={disabled} onChange={onPick} />
       <span>
         <span style={S.choiceLabel}>{label}</span>
         <span style={S.choiceNote}>{note}</span>
@@ -265,4 +395,6 @@ const S = {
   fieldLabel: { display: 'block', fontSize: '0.875rem', fontWeight: 600 },
   fieldHint: { display: 'block', fontSize: '0.8125rem', color: 'var(--fg-faint)', margin: '2px 0 6px' },
   textarea: { width: '100%', resize: 'vertical', lineHeight: 1.6 },
+  localField: { display: 'block', flex: '1 1 150px', minWidth: 120 },
+  localInput: { width: '100%', fontFamily: 'var(--mono)', fontSize: '0.8125rem' },
 } satisfies Record<string, React.CSSProperties>;

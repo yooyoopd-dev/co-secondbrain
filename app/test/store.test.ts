@@ -288,3 +288,43 @@ test('작업별 공급자를 미리 알려 준다', async () => {
   }
   s.close();
 });
+
+/**
+ * 사람이 `01_SOURCES/` 에서 파일을 지웠을 때. 앱은 파일을 안 지우고 따라가기만 한다.
+ *
+ * 위키가 인용 중인 원본은 추출물을 남긴다 — 그것이 관문 5 의 근거라서, 지우면 그 원본을
+ * 인용한 페이지가 전부 검사에서 막힌다. 원문 파일이 없어진 것과 "그런 주장은 없었다" 는
+ * 다른 사건이다.
+ */
+test('인용이 없는 원본을 지우면 목록에서 빠진다', async () => {
+  const { s, root } = await opened();
+  await s.ingest([f('kickoff.docx'), f('meeting.vtt')]);
+  await fs.rm(path.join(root, '01_SOURCES/meeting.vtt'));
+
+  // 지우기만 해도 표시는 바로 바뀐다
+  const before = await s.listSources();
+  assert.equal(before.find((x) => x.filename === 'meeting.vtt')?.missing, true);
+
+  const r = await s.sweepSources();
+  assert.deepEqual(r.removed, ['meeting.vtt']);
+  assert.deepEqual(r.kept, []);
+  assert.deepEqual((await s.listSources()).map((x) => x.filename), ['kickoff.docx']);
+  await assert.rejects(fs.stat(path.join(root, '.sb/extracted/src-meeting.json')));
+  assert.equal(s.search('회의').filter((h) => h.sourceId === 'src-meeting').length, 0);
+  s.close();
+});
+
+test('위키가 인용 중인 원본은 파일이 없어져도 근거를 남긴다', async () => {
+  const { s, root } = await opened();
+  await s.ingest([f('kickoff.docx')]);
+  await putPage(root, '가', '주 협력사다.[^src-kickoff#slide-3]');
+  await fs.rm(path.join(root, '01_SOURCES/kickoff.docx'));
+
+  const r = await s.sweepSources();
+  assert.deepEqual(r.removed, []);
+  assert.deepEqual(r.kept, ['kickoff.docx']);
+  assert.equal((await s.listSources())[0]?.missing, true, '사라진 표시가 없다');
+  assert.ok((await fs.stat(path.join(root, '.sb/extracted/src-kickoff.json'))).isFile());
+  assert.deepEqual(await s.citedSources(), ['src-kickoff']);
+  s.close();
+});

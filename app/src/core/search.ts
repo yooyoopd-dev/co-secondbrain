@@ -86,9 +86,18 @@ export class SearchIndex {
     const len = [...q].length;
     if (len < MIN_QUERY_LEN) return [];
 
-    const rowids = new Set<number>();
+    // **순서가 결과의 일부다.** 예전에는 rowid 를 Set 에 모아 `WHERE rowid IN (...)` 로
+    // 본문을 다시 읽었는데, SQL 의 `IN` 은 순서를 보장하지 않아 FTS5 가 계산한 BM25
+    // 순위가 그 자리에서 사라졌다. 사람이 훑는 화면에서는 티가 안 났지만 상위 몇 개만
+    // 모델에게 주는 자리에서는 그것이 곧 품질이다 (docs/LOCAL-LLM.md §3.1).
+    const order: number[] = [];
+    const seen = new Set<number>();
     const take = (sql: string, ...params: unknown[]) => {
-      for (const r of this.#db.prepare(sql).all(...params) as { rowid: number }[]) rowids.add(r.rowid);
+      for (const r of this.#db.prepare(sql).all(...params) as { rowid: number }[]) {
+        if (seen.has(r.rowid)) continue;
+        seen.add(r.rowid);
+        order.push(r.rowid);
+      }
     };
 
     take('SELECT rowid FROM fts_prefix WHERE fts_prefix MATCH ? ORDER BY rank LIMIT ?', `${quote(q)}*`, limit);
@@ -101,18 +110,21 @@ export class SearchIndex {
       take("SELECT rowid FROM chunks WHERE text LIKE '%' || ? || '%' LIMIT ?", q, limit);
     }
 
-    if (rowids.size === 0) return [];
-    const ids = [...rowids].slice(0, limit);
+    if (order.length === 0) return [];
+    const ids = order.slice(0, limit);
     const rows = this.#db
-      .prepare(`SELECT sourceId, locator, label, text FROM chunks WHERE rowid IN (${ids.map(() => '?').join(',')})`)
-      .all(...ids) as { sourceId: string; locator: string; label: string; text: string }[];
+      .prepare(`SELECT rowid, sourceId, locator, label, text FROM chunks WHERE rowid IN (${ids.map(() => '?').join(',')})`)
+      .all(...ids) as { rowid: number; sourceId: string; locator: string; label: string; text: string }[];
+    const byId = new Map(rows.map((r) => [r.rowid, r]));
 
-    return rows.map((r) => ({
-      sourceId: r.sourceId,
-      locator: r.locator,
-      label: r.label,
-      snippet: snippet(r.text, q),
-    }));
+    // 접두 색인이 먼저, 그다음 trigram. 각 목록 안에서는 BM25 순위 그대로다.
+    const out: SearchHit[] = [];
+    for (const id of ids) {
+      const r = byId.get(id);
+      if (!r) continue;
+      out.push({ sourceId: r.sourceId, locator: r.locator, label: r.label, snippet: snippet(r.text, q) });
+    }
+    return out;
   }
 
   /** 질의어가 실제로 있는 원본 수. UI 의 "원본 N건" 표시용. */

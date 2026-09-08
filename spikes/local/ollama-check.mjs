@@ -57,6 +57,14 @@ export const ANSWER_SCHEMA = {
   additionalProperties: false,
 };
 
+/**
+ * 처리량을 잴 합성 입력. 표본 세 덩이를 돌려 쓰되 앞에 번호를 붙여 서로 다르게 만든다 —
+ * 같은 글이면 서버가 캐시할 여지가 생겨 잰 값이 처리량이 아니게 된다.
+ */
+export function EMBED_BATCH(n = 12) {
+  return Array.from({ length: n }, (_, i) => `${i + 1}번 항목. ${SAMPLE[i % SAMPLE.length]}`);
+}
+
 /** 답이 스키마를 맞췄는가. 지어낸 앵커도 같이 센다 */
 export function judge(raw, allowed) {
   let j;
@@ -90,6 +98,9 @@ if (process.argv.includes('--selftest')) {
   ok('맞는 앵커는 지어낸 것이 아니다', judge(good, a).invented === 0);
   const bad = JSON.stringify({ answer: '가', claims: [{ text: '나', source: 'src-kickoff#p-99' }] });
   ok('없는 앵커를 센다', judge(bad, a).invented === 1);
+  const b = EMBED_BATCH(12);
+  ok('처리량 입력이 12개다', b.length === 12);
+  ok('처리량 입력이 서로 다르다', new Set(b).size === 12);
   process.exit(fails === 0 ? 0 : 1);
 }
 
@@ -137,17 +148,30 @@ if (!chat || !embed) {
 
 /* ---------------- W-O2 임베딩 차원과 속도 ---------------- */
 
+// **첫 호출은 재지 않는다.** 그 회차에는 모델을 메모리에 올리는 시간이 통째로 들어 있어
+// 처리량이 아니다. 2026-09-08 첫 실측의 청크당 1,842ms 가 그것이었다 (docs/ROADMAP.md §20).
+// 적재는 한 번뿐이고 처리량은 청크 수만큼 곱해지므로, 색인 시간을 가늠하려면 둘을 갈라야 한다.
+const tWarm = Date.now();
+const warm = await post('/api/embed', { model: embed, input: [SAMPLE[0]] });
+const loadMs = Date.now() - tWarm;
+if (warm.error) {
+  console.error(`임베딩 호출이 실패했습니다: ${warm.error}`);
+  process.exit(2);
+}
+
+const batch = EMBED_BATCH();
 const t0 = Date.now();
-const emb = await post('/api/embed', { model: embed, input: SAMPLE });
+const emb = await post('/api/embed', { model: embed, input: batch });
 const ms = Date.now() - t0;
 if (emb.error) {
   console.error(`임베딩 호출이 실패했습니다: ${emb.error}`);
   process.exit(2);
 }
 const dim = emb.embeddings?.[0]?.length ?? 0;
-const per = Math.round(ms / SAMPLE.length);
+const per = Math.round(ms / batch.length);
 ok('W-O2 차원이 1024 다', dim === 1024, `${dim}차원`);
-console.log(`      청크당 ${per}ms — 5,000 청크면 약 ${Math.round((per * 5000) / 60000)}분`);
+console.log(`      적재 포함 첫 호출 ${loadMs}ms (한 번만 든다)`);
+console.log(`      예열 뒤 청크당 ${per}ms — 5,000 청크면 약 ${Math.round((per * 5000) / 60000)}분`);
 
 /* ---------------- W-O3 · W-O4 형식과 앵커 ---------------- */
 

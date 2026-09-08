@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Extraction, SearchHit } from '../core/types.ts';
 import type {
-  SbApi, AppSettings, HeldReviewInfo, HubStatus, InboxItem, IngestResult, ProviderPick, SourceSummary, TaskProviders,
+  SbApi, AnswerWith, AppSettings, HeldReviewInfo, HubStatus, InboxItem, IngestResult, LocalInfo, ProviderPick, SourceSummary, TaskProviders,
 } from '../main/ipc.ts';
+import type { LocalConfig } from '../core/local/ollama.ts';
 import type { ProviderId } from '../core/agent/types.ts';
 import { EMPTY_CORE_CONTEXT, type CoreContext } from '../core/context.ts';
 import { CLASSIFICATIONS, CLASSIFICATION_LABEL, DEFAULT_CLASSIFICATION } from '../core/types.ts';
@@ -37,6 +38,12 @@ const RUN_LINES = 40;
 function providerLabel(p: ProviderPick | undefined): string {
   if (!p) return '확인 중';
   return p.ok ? p.provider : '쓸 수 없음';
+}
+
+/** 질의를 누가 맡나. 로컬은 라우터 밖의 축이라 `query` 를 안 본다 */
+function askLabel(t: TaskProviders | null): string {
+  if (!t) return '확인 중';
+  return t.answerWith === 'local' ? '로컬' : providerLabel(t.query);
 }
 
 declare global {
@@ -93,6 +100,8 @@ export default function App() {
   const [heldApproved, setHeldApproved] = useState<readonly string[] | undefined>(undefined);
   // CLI 가 도는 동안만 산다. 취소 버튼과 진행 표시가 여기를 본다
   const [run, setRun] = useState<{ label: string; provider: string; lines: string[] } | null>(null);
+  // 로컬 모델 상태. 설정을 열 때만 물어본다 — Ollama 에 붙는 데 시간이 든다
+  const [localInfo, setLocalInfo] = useState<LocalInfo | null>(null);
   const [core, setCore] = useState<CoreContext>(EMPTY_CORE_CONTEXT);
   const [coreOpen, setCoreOpen] = useState(false);
 
@@ -279,7 +288,7 @@ export default function App() {
     setBusy(true);
     setReviewNote(null);
     setAnswer(null);
-    setRun({ label: 'LLM 위키에 묻기', provider: providerLabel(providers?.query), lines: [] });
+    setRun({ label: '위키에 묻기', provider: askLabel(providers), lines: [] });
     try {
       const r = await window.sb.ask(question);
       if (r.ok) {
@@ -403,7 +412,62 @@ export default function App() {
 
   /* 설정 · 내 맥락 */
 
-  const openSettings = async () => setSettings(await window.sb.settings());
+  /**
+   * 새로 고침은 다시 읽기만 하는 것이 아니다. `01_SOURCES/` 에서 사라진 원본을 같이 정리한다 —
+   * 사람이 탐색기에서 지운 파일이 목록에 남아 있으면 목록을 못 믿게 된다.
+   * 위키가 인용 중인 것은 안 지우고 남겨 둔 사유를 적어 준다 (store.sweepSources).
+   */
+  const sweepAndRefresh = async () => {
+    setBusy(true);
+    try {
+      const r = await window.sb.sweepSources();
+      await refresh();
+      if (r.removed.length || r.kept.length) {
+        const parts: string[] = [];
+        if (r.removed.length) parts.push(`사라진 원본 ${r.removed.length}건을 목록에서 뺐습니다`);
+        if (r.kept.length) parts.push(`${r.kept.length}건은 위키가 인용 중이라 남겼습니다`);
+        setReviewNote(parts.join('. '));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openSettings = async () => {
+    setSettings(await window.sb.settings());
+    // 화면을 붙들지 않는다. Ollama 가 꺼져 있으면 응답까지 몇 초가 걸린다
+    setLocalInfo(null);
+    void window.sb.localInfo().then(setLocalInfo);
+  };
+
+  const pickAnswerWith = async (mode: AnswerWith) => {
+    await window.sb.setAnswerWith(mode);
+    setSettings(await window.sb.settings());
+    // 버튼 라벨이 이 값을 본다. 무언가 실행한 뒤에 바뀌면 안 된다
+    setProviders(await window.sb.taskProviders());
+    if (mode === 'local') void window.sb.localInfo().then(setLocalInfo);
+  };
+
+  const saveLocalConfig = async (cfg: LocalConfig) => {
+    await window.sb.setLocalConfig(cfg);
+    setSettings(await window.sb.settings());
+    setLocalInfo(null);
+    void window.sb.localInfo().then(setLocalInfo);
+  };
+
+  /** 오래 돈다. 진행 줄은 CLI 와 같은 자리에 뜨고 취소 버튼도 그대로 듣는다 */
+  const buildVectors = async () => {
+    setBusy(true);
+    setRun({ label: '위키 임베딩 만들기', provider: '로컬', lines: [] });
+    try {
+      const r = await window.sb.buildVectors();
+      setReviewNote(r.ok ? `임베딩 ${r.made}개를 새로 만들었습니다 (모두 ${r.total}개)` : r.error);
+      setLocalInfo(await window.sb.localInfo());
+    } finally {
+      setRun(null);
+      setBusy(false);
+    }
+  };
 
   /**
    * 쓸 CLI 를 바꾼다. **버튼에 적힌 이름도 여기서 같이 갱신한다** — 전에는 다음
@@ -553,7 +617,7 @@ export default function App() {
         onQuit={() => void quit()}
         onSelect={(id) => jump(id, null)}
         cited={cited}
-        onRefresh={() => void refresh()}
+        onRefresh={() => void sweepAndRefresh()}
         spend={spend}
         pending={pending}
         onLint={async () => setEstimate(await window.sb.estimateJudgment())}
@@ -583,6 +647,7 @@ export default function App() {
         mdView={mdView}
         onMdView={setMdView}
         queryProvider={providers?.query}
+        local={providers?.answerWith === 'local'}
       />
       <Viewer
         viewer={viewer}
@@ -633,8 +698,12 @@ export default function App() {
         <SettingsPanel
           settings={settings}
           hub={hub}
+          local={localInfo}
           busy={busy}
           onProvider={(id) => void pickProvider(id)}
+          onAnswerWith={(mode) => void pickAnswerWith(mode)}
+          onLocalConfig={(cfg) => void saveLocalConfig(cfg)}
+          onBuildVectors={() => void buildVectors()}
           onCore={() => {
             setSettings(null);
             void openCore();
@@ -877,9 +946,22 @@ function Rail({
           </div>
         )}
         {sources.map((s) => (
-          <button key={s.sourceId} style={S.sourceRow} onClick={() => onSelect(s.sourceId)}>
+          <button
+            key={s.sourceId}
+            style={S.sourceRow}
+            onClick={() => onSelect(s.sourceId)}
+            title={s.missing ? '원본 파일이 01_SOURCES 에 없습니다. 추출해 둔 내용만 남아 있습니다' : s.filename}
+          >
             <span style={S.kindTag}>{s.kind}</span>
-            <span style={S.sourceName}>{s.filename}</span>
+            {/* 파일이 없어진 것은 취소선으로 표시한다. 글머리 기호를 붙이면 목록이 들쭉날쭉해진다 */}
+            <span
+              style={{
+                ...S.sourceName,
+                ...(s.missing ? { color: 'var(--fg-faint)', textDecoration: 'line-through' } : {}),
+              }}
+            >
+              {s.filename}
+            </span>
             <WikiMark cited={cited.has(s.sourceId)} />
             <ClassBadge value={s.classification} />
           </button>
@@ -1017,6 +1099,7 @@ function Results({
   mdView,
   onMdView,
   queryProvider,
+  local,
 }: {
   query: string;
   setQuery: (q: string) => void;
@@ -1033,8 +1116,10 @@ function Results({
   onCancelLint: () => void;
   mdView: MdView;
   onMdView: (v: MdView) => void;
-  /** [LLM 위키에 묻기] 를 실제로 맡을 공급자. 라우팅이 거절하면 사유가 온다 */
+  /** [위키에 묻기] 를 실제로 맡을 공급자. 라우팅이 거절하면 사유가 온다 */
   queryProvider: ProviderPick | undefined;
+  /** 로컬 모델로 답하는 설정인가. 그러면 공급자 라우팅을 안 본다 */
+  local: boolean;
 }) {
   const len = [...query.trim()].length;
   const tooShort = len === 1;
@@ -1065,13 +1150,19 @@ function Results({
         */}
         <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
           <button
-            disabled={busy || len < 2 || queryProvider?.ok === false}
+            disabled={busy || len < 2 || (!local && queryProvider?.ok === false)}
             onClick={() => onAsk(query.trim())}
-            title={queryProvider?.ok === false ? queryProvider.reason : '검색은 원본을, 질의는 위키를 봅니다'}
+            title={
+              local
+                ? '이 컴퓨터의 Ollama 로 답합니다. 내용이 밖으로 안 나갑니다'
+                : queryProvider?.ok === false
+                  ? queryProvider.reason
+                  : '검색은 원본을, 질의는 위키를 봅니다'
+            }
           >
-            LLM 위키에 묻기{queryProvider?.ok ? ` (${queryProvider.provider})` : ''}
+            위키에 묻기{local ? ' (로컬)' : queryProvider?.ok ? ` (${queryProvider.provider})` : ''}
           </button>
-          {queryProvider?.ok === false ? (
+          {!local && queryProvider?.ok === false ? (
             <span style={{ fontSize: '0.75rem', color: 'var(--warn)' }}>{queryProvider.reason}</span>
           ) : (
             <span style={{ fontSize: '0.75rem', color: 'var(--fg-faint)' }}>

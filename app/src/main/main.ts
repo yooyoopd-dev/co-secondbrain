@@ -12,6 +12,8 @@ import { credStore, type Cipher } from './creds.ts';
 import { SOURCE_KIND_BY_EXT, type Classification } from '../core/types.ts';
 import { OUTPUT_DIR } from '../core/vault.ts';
 import type { CoreContext } from '../core/context.ts';
+import type { AnswerWith } from './ipc.ts';
+import type { LocalConfig } from '../core/local/ollama.ts';
 import type { ProviderId } from '../core/agent/types.ts';
 import { LogBuffer, formatLog } from '../core/log.ts';
 import type { Answer } from '../core/query.ts';
@@ -160,6 +162,7 @@ function registerIpc(): void {
   handle(IPC.ingestInbox, (_e, classification: Classification) => store.ingestInbox(classification));
 
   handle(IPC.listSources, () => store.listSources());
+  handle(IPC.sweepSources, () => store.sweepSources());
   handle(IPC.citedSources, () => store.citedSources());
   handle(IPC.search, (_e, q: string) => store.search(q));
   handle(IPC.readSource, (_e, id: string) => store.readSource(id));
@@ -217,6 +220,13 @@ function registerIpc(): void {
 
   handle(IPC.settings, () => store.settings(app.getVersion()));
   handle(IPC.setProvider, (_e, id: ProviderId | null) => store.setProvider(id));
+  handle(IPC.setAnswerWith, (_e, mode: AnswerWith) => store.setAnswerWith(mode));
+  handle(IPC.setLocalConfig, (_e, cfg: Partial<LocalConfig>) => store.setLocalConfig(cfg));
+  handle(IPC.localInfo, () => store.localInfo());
+  // 임베딩 만들기는 오래 돈다. 진행 줄을 CLI 와 같은 채널로 되돌려 보낸다
+  handle(IPC.buildVectors, (e) =>
+    store.buildVectors({ onOutput: (chunk) => e.sender.send(IPC.agentOutput, chunk) }),
+  );
 
   /* 나의 기준 맥락 */
 

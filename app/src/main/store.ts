@@ -16,7 +16,7 @@ import { citations } from '../core/page.ts';
 import { createCli } from '../core/agent/index.ts';
 import { validateChangeSet } from '../core/agent/gemini.ts';
 import { DEFAULT_ROUTING, MCP_VERIFIED, route, type TaskKind } from '../core/agent/router.ts';
-import { hashContent, markProposed, planWork, readManifest, recordSource, writeManifest, type Manifest, type SourceState, type WorkPlan } from '../core/cache.ts';
+import { forgetSource, hashContent, markProposed, planWork, readManifest, recordSource, writeManifest, type Manifest, type SourceState, type WorkPlan } from '../core/cache.ts';
 import { DEFAULT_MONTHLY_USD, EMPTY_LOG, add as addSpend, status as spendStatus, type Limits, type SpendLog, type Status } from '../core/spend.ts';
 import { read as readSpend, write as writeSpend } from '../core/spend-file.ts';
 import type { ProviderId } from '../core/agent/types.ts';
@@ -38,6 +38,9 @@ interface HeldReview {
 import { conventionFile, promptFor, type WikiRef } from '../core/agent/ingest.ts';
 import { ALLOWED_TOOLS, mcpConfig, type McpLaunch } from '../core/mcp/config.ts';
 import { ANSWER_SCHEMA, parseAnswer, questionPrompt, toChangeSet, type Answer } from '../core/query.ts';
+import { DEFAULT_LOCAL, Ollama, type LocalConfig, type LocalStatus } from '../core/local/ollama.ts';
+import { TOP_K, allowedAnchors, chunkWiki, localPrompt, nearest, normalize, queryTerms, rrf, type WikiChunk } from '../core/local/index.ts';
+import { chunkHash, readVectors, reusable, writeVectors, type VectorStore } from '../core/local/file.ts';
 import { JUDGMENT_SCHEMA, judgmentPrompt, judgmentPromptPush, parseJudgment, summarizeJudgment, type ParsedJudgment } from '../core/lint/judgment.ts';
 import { lint, type LintReport } from '../core/lint/index.ts';
 import { readRejected, reject, toKeys, unreject, type RejectedPair } from '../core/lint/rejected.ts';
@@ -47,7 +50,7 @@ import { disposeWorkdir, prepareWorkdir } from '../core/agent/workdir.ts';
 import type { Extraction, Relation } from '../core/types.ts';
 import { hubClient, pendingChanges, resolveConflict, scanLocal, sync, readState, HubError, HubOffline, type HubClient, type SyncConflict } from '../core/sync/index.ts';
 import type { TokenStore } from './creds.ts';
-import type { AppSettings, AskResult, HubStatus, IngestResult, JudgmentResult, ProposeResult, ProviderPick, ResolveResult, SourceSummary, SyncResult, TaskProviders } from './ipc.ts';
+import type { AnswerWith, AppSettings, AskResult, HubStatus, IngestResult, JudgmentResult, LocalInfo, ProposeResult, ProviderPick, ResolveResult, SourceSummary, SourceSweep, SyncResult, TaskProviders } from './ipc.ts';
 
 /** 부르는 쪽(main)이 넘기는 것. 취소 손잡이는 Store 가 스스로 만든다 */
 export interface RunHooks {
@@ -89,6 +92,16 @@ export class Store {
   /** 공급자 선택은 Vault 가 아니라 이 PC 의 것이다. Vault 를 바꿔도 따라오지 않는다 */
   readonly #prefsFile: string | null;
 
+  /**
+   * [위키에 묻기] 를 무엇으로 답하나. **공급자 목록의 넷째 항목이 아니라 별개의 축이다** —
+   * `PROVIDERS` 는 예산을 쓰는 외부 CLI 의 목록이고 라우터가 상한과 MCP 로 고르는데,
+   * 로컬 모델은 둘 다 해당이 없다 (docs/LOCAL-LLM.md §5).
+   */
+  #answerWith: AnswerWith = 'cli';
+  #local: LocalConfig = { ...DEFAULT_LOCAL };
+  /** 테스트가 가짜 Ollama 를 물릴 자리. 실행 중에는 전역 fetch 다 */
+  readonly #localFetch: typeof globalThis.fetch;
+
   /** MCP 서버를 어떻게 띄울지. 개발과 패키징본이 달라 main 이 정한다 */
   readonly #mcpLaunch: ((vaultRoot: string) => McpLaunch) | null;
 
@@ -110,6 +123,7 @@ export class Store {
       mcpLaunch?: (vaultRoot: string) => McpLaunch;
       tokens?: TokenStore;
       hubFetch?: typeof globalThis.fetch;
+      localFetch?: typeof globalThis.fetch;
     } = {},
   ) {
     this.#spendFile = opts.spendFile ?? null;
@@ -117,6 +131,7 @@ export class Store {
     this.#mcpLaunch = opts.mcpLaunch ?? null;
     this.#tokens = opts.tokens ?? null;
     this.#hubFetch = opts.hubFetch ?? globalThis.fetch;
+    this.#localFetch = opts.localFetch ?? globalThis.fetch;
   }
 
   get vault(): Vault | null {
@@ -199,6 +214,13 @@ export class Store {
   async listSources(): Promise<SourceSummary[]> {
     const v = this.#require();
     const dir = safeJoin(v.root, EXTRACTED_DIR);
+    // 폴더를 한 번 읽고 이름으로 맞춘다. 원본마다 stat 을 걸면 파일 수만큼 호출이 늘어난다
+    let present: Set<string>;
+    try {
+      present = new Set(await fs.readdir(safeJoin(v.root, SOURCES_DIR)));
+    } catch {
+      present = new Set();
+    }
     const out: SourceSummary[] = [];
     for (const name of await fs.readdir(dir)) {
       if (!name.endsWith('.json') || name.startsWith('__')) continue;
@@ -209,9 +231,39 @@ export class Store {
         kind: e.kind,
         chunks: e.chunks.length,
         classification: e.classification ?? DEFAULT_CLASSIFICATION,
+        missing: !present.has(e.filename),
       });
     }
     return out.sort((a, b) => a.filename.localeCompare(b.filename, 'ko'));
+  }
+
+  /**
+   * `01_SOURCES/` 에서 사라진 원본을 정리한다. 새로 고침 버튼이 부른다.
+   *
+   * **위키가 인용 중인 원본은 안 지운다.** 추출물이 관문 5(앵커 실재 검사)의 근거라
+   * 그것을 지우면 그 원본을 인용한 페이지가 전부 검사에서 막힌다. 원문 파일이 없어진 것과
+   * "그런 주장은 없었다" 는 다른 사건이다 — 앞의 것은 표시로 알리고, 근거는 남긴다.
+   *
+   * **원본 파일을 앱이 지우지 않는다.** 사람이 지운 것을 따라갈 뿐이다.
+   */
+  async sweepSources(): Promise<SourceSweep> {
+    const v = this.#require();
+    const cited = new Set(await this.citedSources());
+    const res: SourceSweep = { removed: [], kept: [] };
+    for (const s of await this.listSources()) {
+      if (!s.missing) continue;
+      if (cited.has(s.sourceId)) {
+        res.kept.push(s.filename);
+        continue;
+      }
+      await fs.rm(safeJoin(v.root, EXTRACTED_DIR, `${s.sourceId}.json`), { force: true });
+      this.#index!.removeSource(s.sourceId);
+      this.#manifest = forgetSource(this.#manifest, s.sourceId);
+      res.removed.push(s.filename);
+      await appendLog(v, 'sweep', s.filename);
+    }
+    if (res.removed.length) await writeManifest(v, this.#manifest);
+    return res;
   }
 
   /**
@@ -357,6 +409,8 @@ export class Store {
       co: this.#vault ? this.#vault.config.hub !== null : null,
       provider: this.#provider,
       providers: PROVIDERS.map((p) => ({ ...p, installed: installed.includes(p.id) })),
+      answerWith: this.#answerWith,
+      local: { ...this.#local },
     };
   }
 
@@ -368,18 +422,54 @@ export class Store {
    */
   async setProvider(id: ProviderId | null): Promise<void> {
     this.#provider = id;
-    if (this.#prefsFile) await fs.writeFile(this.#prefsFile, JSON.stringify({ provider: id }, null, 2), 'utf8');
+    await this.#writePrefs();
   }
 
-  /** 저장해 둔 공급자 선택을 읽는다. 파일이 없거나 깨졌으면 자동으로 둔다. */
+  /** 질의를 외부 CLI 로 받을지 로컬 모델로 받을지. 다른 작업은 안 바뀐다 */
+  async setAnswerWith(mode: AnswerWith): Promise<void> {
+    this.#answerWith = mode === 'local' ? 'local' : 'cli';
+    await this.#writePrefs();
+  }
+
+  /** Ollama 주소와 모델 이름. 빈 값은 기본값으로 되돌린다 */
+  async setLocalConfig(cfg: Partial<LocalConfig>): Promise<void> {
+    const pick = (v: unknown, d: string) => (typeof v === 'string' && v.trim() ? v.trim() : d);
+    this.#local = {
+      host: pick(cfg.host, DEFAULT_LOCAL.host),
+      chatModel: pick(cfg.chatModel, DEFAULT_LOCAL.chatModel),
+      embedModel: pick(cfg.embedModel, DEFAULT_LOCAL.embedModel),
+    };
+    await this.#writePrefs();
+  }
+
+  async #writePrefs(): Promise<void> {
+    if (!this.#prefsFile) return;
+    const body = { provider: this.#provider, answerWith: this.#answerWith, local: this.#local };
+    await fs.writeFile(this.#prefsFile, JSON.stringify(body, null, 2), 'utf8');
+  }
+
+  /** 저장해 둔 선택을 읽는다. 파일이 없거나 깨졌으면 기본값으로 둔다. */
   async loadPrefs(): Promise<void> {
     if (!this.#prefsFile) return;
     try {
-      const raw: unknown = JSON.parse(await fs.readFile(this.#prefsFile, 'utf8'));
-      const id = (raw as { provider?: unknown }).provider;
-      this.#provider = PROVIDERS.some((p) => p.id === id) ? (id as ProviderId) : null;
+      const raw = JSON.parse(await fs.readFile(this.#prefsFile, 'utf8')) as {
+        provider?: unknown;
+        answerWith?: unknown;
+        local?: Partial<LocalConfig>;
+      };
+      this.#provider = PROVIDERS.some((p) => p.id === raw.provider) ? (raw.provider as ProviderId) : null;
+      this.#answerWith = raw.answerWith === 'local' ? 'local' : 'cli';
+      const l = raw.local ?? {};
+      const pick = (v: unknown, d: string) => (typeof v === 'string' && v.trim() ? v.trim() : d);
+      this.#local = {
+        host: pick(l.host, DEFAULT_LOCAL.host),
+        chatModel: pick(l.chatModel, DEFAULT_LOCAL.chatModel),
+        embedModel: pick(l.embedModel, DEFAULT_LOCAL.embedModel),
+      };
     } catch {
       this.#provider = null;
+      this.#answerWith = 'cli';
+      this.#local = { ...DEFAULT_LOCAL };
     }
   }
 
@@ -449,7 +539,7 @@ export class Store {
       const r = route(k, ctx);
       return r.ok ? { ok: true, provider: r.provider, why: r.why } : { ok: false, reason: r.reason };
     };
-    return { query: pick('query'), ingest: pick('ingest.single') };
+    return { query: pick('query'), ingest: pick('ingest.single'), answerWith: this.#answerWith };
   }
 
   /** 공급자별 이번 달 소비와 남은 문서 수. 화면에 띄운다. */
@@ -592,6 +682,8 @@ export class Store {
    */
   async ask(question: string, hooks?: RunHooks, provider?: ProviderId): Promise<AskResult> {
     const v = this.#require();
+    // 로컬은 갈래가 통째로 다르다. MCP 를 안 띄우고 앱이 찾아서 넣는다
+    if (this.#answerWith === 'local' && !provider) return this.askLocal(question, hooks);
     if (!this.#mcpLaunch) return { ok: false, error: '읽기 경로가 설정되지 않았습니다' };
 
     const now = new Date().toISOString();
@@ -629,6 +721,177 @@ export class Store {
     } finally {
       await disposeWorkdir(wd);
     }
+  }
+
+  /* ---------- 로컬 모델 질의 (docs/LOCAL-LLM.md) ---------- */
+
+  /**
+   * 로컬 모델이 지금 쓸 만한가. **네트워크를 탄다** — 설정을 열 때와 로컬로 답하기 직전에만 부른다.
+   * 임베딩이 몇 개 만들어져 있는지도 같이 준다. 없어도 답은 나온다(BM25 만 쓴다).
+   */
+  async localInfo(): Promise<LocalInfo> {
+    const status = await new Ollama(this.#local, this.#localFetch).status();
+    // 설정 화면은 Vault 를 안 열고도 열린다. 그때도 Ollama 상태는 보여 준다
+    if (!this.#vault) return { status, chunks: 0, vectors: 0 };
+    const v = this.#vault;
+    const chunks = chunkWiki((await readWikiPages(v)).entries).length;
+    const store = await readVectors(v);
+    const vectors = store && store.model === this.#local.embedModel ? store.entries.size : 0;
+    return { status, chunks, vectors };
+  }
+
+  /**
+   * 위키 청크의 임베딩을 만든다. **본문이 그대로인 것은 다시 안 만든다** —
+   * 사내 실측에서 청크당 시간이 커서 (ROADMAP §20) 전부 다시 만들면 못 쓴다.
+   *
+   * 중간에 끊어도 지금까지 만든 것은 저장한다. 다음에 이어서 만든다.
+   */
+  async buildVectors(hooks?: RunHooks): Promise<{ ok: true; made: number; total: number } | { ok: false; error: string }> {
+    const v = this.#require();
+    const oll = new Ollama(this.#local, this.#localFetch);
+    const st = await oll.status();
+    if (!st.ok || !st.embed) return { ok: false, error: st.error ?? '임베딩 모델이 없습니다' };
+
+    const chunks = chunkWiki((await readWikiPages(v)).entries);
+    if (chunks.length === 0) return { ok: false, error: '위키에 페이지가 없습니다' };
+
+    const prev = reusable(await readVectors(v), this.#local.embedModel);
+    const next: VectorStore = { model: this.#local.embedModel, dim: prev.dim, entries: new Map() };
+    const todo: WikiChunk[] = [];
+    for (const c of chunks) {
+      const hash = chunkHash(c.text);
+      const old = prev.entries.get(c.key);
+      if (old && old.hash === hash) next.entries.set(c.key, old);
+      else todo.push(c);
+    }
+
+    return this.#runAgent(hooks, async (h) => {
+      const say = (line: string) => h.onOutput?.(`${line}\n`, 'stdout');
+      say(`청크 ${chunks.length}개 중 ${todo.length}개를 새로 만듭니다`);
+      let made = 0;
+      // 한 번에 여덟 개씩. 배치가 크면 끊었을 때 버리는 것이 많아진다
+      for (let i = 0; i < todo.length; i += 8) {
+        if (h.signal.aborted) break;
+        const batch = todo.slice(i, i + 8);
+        const r = await oll.embed(st.embed!, batch.map((c) => c.text), h.signal);
+        if (!r.ok) {
+          if (next.entries.size) await this.#saveVectors(v, next);
+          return { ok: false as const, error: r.error };
+        }
+        for (const [j, c] of batch.entries()) {
+          const vec = normalize(r.vectors[j]!);
+          next.dim ||= vec.length;
+          if (vec.length !== next.dim) continue;
+          next.entries.set(c.key, { hash: chunkHash(c.text), vec });
+          made += 1;
+        }
+        say(`${Math.min(i + 8, todo.length)} / ${todo.length}`);
+      }
+      await this.#saveVectors(v, next);
+      return { ok: true as const, made, total: next.entries.size };
+    });
+  }
+
+  async #saveVectors(v: Vault, store: VectorStore): Promise<void> {
+    if (store.dim === 0) return;
+    // 차원이 다른 것이 섞이면 파일 길이가 안 맞아 다음에 통째로 못 읽는다
+    for (const [k, e] of store.entries) if (e.vec.length !== store.dim) store.entries.delete(k);
+    await writeVectors(v, store);
+  }
+
+  /**
+   * 앱이 찾아서 넣고 로컬 모델을 한 번 부른다 (docs/LOCAL-LLM.md §2.2).
+   *
+   * MCP 경로와 달리 **무엇을 줬는지 앱이 안다.** 그래서 관문 5 를 Vault 전체가 아니라
+   * 준 조각만 놓고 판정한다 — 준 것에 없는 앵커는 지어낸 것이 확실하다.
+   */
+  async askLocal(question: string, hooks?: RunHooks): Promise<AskResult> {
+    const v = this.#require();
+    const oll = new Ollama(this.#local, this.#localFetch);
+    const st = await oll.status();
+    if (!st.ok || !st.chat) return { ok: false, error: st.error ?? '로컬 모델을 못 씁니다' };
+
+    const chunks = chunkWiki((await readWikiPages(v)).entries);
+    if (chunks.length === 0) return { ok: false, error: '위키에 페이지가 없습니다' };
+
+    return this.#runAgent(hooks, async (h) => {
+      const say = (line: string) => h.onOutput?.(`${line}\n`, 'stdout');
+      const picked = await this.#retrieve(question, chunks, oll, st.embed, h.signal, say);
+      if (picked.length === 0) return { ok: false as const, error: '질문에 걸리는 위키 조각이 없습니다' };
+
+      const prompt = localPrompt(question, picked, coreContextBlock(await this.coreContext()));
+      say(`조각 ${picked.length}개를 넣고 ${st.chat} 를 부릅니다`);
+      const r = await oll.chat(st.chat!, prompt, ANSWER_SCHEMA, h.signal);
+      if (!r.ok) return { ok: false as const, error: this.#cancelled ? '취소했습니다' : r.error };
+
+      const { answer, reason } = parseAnswer(r.data);
+      if (!answer) return { ok: false as const, error: reason ?? '답변 형식이 맞지 않습니다' };
+
+      const allowed = allowedAnchors(picked);
+      const invented = answer.claims.filter((c) => !allowed.has(c.source)).map((c) => c.source);
+      if (invented.length) {
+        return { ok: false as const, error: `준 조각에 없는 앵커를 인용했습니다: ${[...new Set(invented)].join(' · ')}` };
+      }
+      await appendLog(v, 'query', question);
+      // 돈이 안 든다. 지출 기록에는 안 쌓는다 — 공급자별 상한과 섞이면 둘 다 못 읽는다
+      return { ok: true as const, question, answer, costUsd: 0 };
+    });
+  }
+
+  /**
+   * BM25 와 임베딩을 각각 뽑아 RRF 로 합친다.
+   *
+   * BM25 는 낱말마다 목록이 하나씩 나오므로 **먼저 그것끼리 합치고** 그다음 임베딩과
+   * 합친다. 한 번에 합치면 낱말 수만큼 BM25 쪽이 무거워진다.
+   *
+   * 임베딩이 없으면 BM25 만으로 간다. 색인이 없다고 답을 못 내는 것보다 낫다.
+   */
+  async #retrieve(
+    question: string,
+    chunks: readonly WikiChunk[],
+    oll: Ollama,
+    embedModel: string | null,
+    signal: AbortSignal,
+    say: (line: string) => void,
+  ): Promise<WikiChunk[]> {
+    const v = this.#require();
+    const byKey = new Map(chunks.map((c) => [c.key, c]));
+
+    // 위키 색인은 질의마다 메모리에 새로 만든다. 승인 한 번에 위키가 바뀌므로
+    // 파일로 남기면 언제 무효인지를 따로 관리해야 한다 — 만드는 값이 그보다 싸다
+    const mem = new DatabaseSync(':memory:');
+    let bm: string[];
+    try {
+      const idx = new SearchIndex(mem as unknown as Db);
+      idx.indexSource(
+        'wiki',
+        chunks.map((c) => ({ anchor: { sourceId: 'wiki', locator: c.key, label: c.title }, text: c.text })),
+      );
+      const lists = queryTerms(question).map((t) => idx.search(t, 30).map((x) => x.locator));
+      bm = rrf(lists).map((x) => x.key);
+    } finally {
+      mem.close();
+    }
+
+    let dense: string[] = [];
+    const store = await readVectors(v);
+    if (embedModel && store && store.model === embedModel && store.entries.size > 0) {
+      const q = await oll.embed(embedModel, [question], signal);
+      if (q.ok && q.vectors[0]) {
+        const vecs = new Map([...store.entries].map(([k, e]) => [k, e.vec] as const));
+        dense = nearest(normalize(q.vectors[0]), vecs, 30).filter((k) => byKey.has(k));
+      }
+    }
+    say(dense.length ? `키워드 ${bm.length}개 · 임베딩 ${dense.length}개를 합칩니다` : `키워드로만 찾습니다 (임베딩 없음)`);
+
+    const fused = dense.length ? rrf([bm, dense]) : rrf([bm]);
+    const out: WikiChunk[] = [];
+    for (const f of fused) {
+      const c = byKey.get(f.key);
+      if (c) out.push(c);
+      if (out.length >= TOP_K) break;
+    }
+    return out;
   }
 
   /* ---------- Lint 계산 검사 7종 (PLAN.md §4) ---------- */
