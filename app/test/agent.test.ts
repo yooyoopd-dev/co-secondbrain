@@ -409,6 +409,7 @@ test('스탬프 — 녹화된 Gemini 응답의 claude-code 표기가 고쳐진�
 /* ================= Gemini B등급 어댑터 (ROADMAP 3번) ================= */
 
 import {
+  authHint,
   buildArgv as gBuildArgv,
   createGemini,
   extract,
@@ -785,6 +786,25 @@ test('exec — 이미 취소된 신호면 아예 안 띄운다', async () => {
   const r = await realExec(process.execPath, ['-e', 'process.exit(0)'], { ...NODE_OPTS, signal: AbortSignal.abort() });
   assert.equal(r.code, -2);
   assert.equal(r.stdout, '');
+});
+
+test('인증이 없다는 오류에는 무엇을 해야 하는지 붙인다', async () => {
+  // 0.58.0 의 validateNonInteractiveAuth 가 내는 문구 그대로. 사내 실측 (2026-09-09).
+  const msg =
+    'Please set an Auth method in your C:\\Users\\x\\.gemini\\settings.json or specify one of the ' +
+    'following environment variables before running: GEMINI_API_KEY, GOOGLE_GENAI_USE_VERTEXAI, GOOGLE_GENAI_USE_GCA';
+  assert.match(authHint(msg) ?? '', /security\.auth\.selectedType/);
+  // 다른 오류에는 안 붙인다. 늘 붙는 안내는 곧 안 읽힌다.
+  assert.equal(authHint('쿼터를 다 썼습니다'), null);
+
+  const cli = createGemini(async () => ({
+    stdout: '',
+    stderr: JSON.stringify({ error: { message: msg, code: 41 } }),
+    code: 41,
+  }));
+  const r = await cli.run({ workdir: '/tmp', prompt: '가', validate: validateChangeSet }, CHANGESET_SCHEMA);
+  assert.equal(r.ok, false);
+  assert.match(r.error ?? '', /gemini` 를 한 번 띄워/);
 });
 
 /* ---------------- Gemini + MCP (2026-09-09) ---------------- */

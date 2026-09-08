@@ -57,6 +57,22 @@ export function mcpDisabled(stderr: string): boolean {
   return /untrusted/i.test(stderr) && /mcp/i.test(stderr);
 }
 
+/**
+ * 인증이 안 잡힌 오류인가. 문구는 0.58.0 의 `validateNonInteractiveAuth` 가 내는 그대로다.
+ *
+ * 2026-09-09 사내에서 이걸로 위키 갱신까지 멈췄다. **앱이 고칠 수 있는 것이 아니라서**
+ * 무엇을 해야 하는지 한 줄로 알려 주는 것이 우리가 할 수 있는 전부다. 인증은 CLI 가
+ * 자기 설정에 들고 있고 우리는 거기 손대지 않는다.
+ */
+export function authHint(error: string): string | null {
+  if (!/set an Auth method/i.test(error)) return null;
+  return (
+    '사용자 설정(`~/.gemini/settings.json`)에 인증이 없습니다. ' +
+    '`security.auth.selectedType` 이 `security.folderTrust` 와 같은 `security` 아래 있어야 합니다 — ' +
+    '손으로 고치다 지워졌다면 터미널에서 `gemini` 를 한 번 띄워 인증 방식을 고르면 CLI 가 다시 적습니다.'
+  );
+}
+
 export const MCP_OFF_MESSAGE =
   'Gemini 가 폴더 신뢰 때문에 MCP 를 껐습니다. 위키를 안 읽고 답하게 되므로 멈춥니다. ' +
   '사용자 수준 설정(`~/.gemini/settings.json`)에 `security.folderTrust.enabled: false` 를 넣으십시오.';
@@ -242,7 +258,10 @@ export function createGemini(exec: Exec = realExec): AgentCli {
       const first = await call(prompt);
       // 위키를 읽어야 하는 호출인데 MCP 가 꺼졌으면 여기서 끝낸다. 답이 오더라도 못 믿는다.
       if (job.mcp && mcpDisabled(first.stderr)) return fail(MCP_OFF_MESSAGE, first.stdout);
-      if (first.env.error !== null) return fail(`CLI 가 거절했습니다: ${first.env.error.slice(0, 300)}`, first.stdout);
+      if (first.env.error !== null) {
+        const hint = authHint(first.env.error);
+        return fail(`CLI 가 거절했습니다: ${first.env.error.slice(0, 300)}${hint ? `\n${hint}` : ''}`, first.stdout);
+      }
       if (!first.env.text.trim()) {
         return fail(`CLI 가 출력 없이 종료했습니다 (code=${first.code}): ${first.stderr.trim().slice(0, 300)}`, first.stdout);
       }

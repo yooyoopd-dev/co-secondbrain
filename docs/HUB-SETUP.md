@@ -45,7 +45,7 @@ ssh co-hub관리자@192.168.0.50
 
 ```powershell
 cd $env:USERPROFILE\Downloads
-scp co-hub-0.9.1.tgz co-hub관리자@192.168.0.50:~/
+scp co-hub-0.9.2.tgz co-hub관리자@192.168.0.50:~/
 ```
 
 Node 를 오프라인으로 깔아야 한다면(2번) tarball 도 같이 보냅니다.
@@ -79,7 +79,7 @@ sudo useradd --system --home /srv/co-hub --shell /usr/sbin/nologin co-hub
 sudo mkdir -p /srv/co-hub
 
 # 2) 홈에 올려 둔 묶음을 푼다
-sudo tar -xzf ~/co-hub-0.9.1.tgz -C /srv/co-hub
+sudo tar -xzf ~/co-hub-0.9.2.tgz -C /srv/co-hub
 
 # 3) 설정
 sudo cp /srv/co-hub/deploy/config.example.json /srv/co-hub/config.json
@@ -229,7 +229,7 @@ sudo chown co-hub:co-hub /srv/co-hub
 원격으로 하는 절차는 **1번**에 있습니다.
 
 ```bash
-sudo tar -xzf ~/co-hub-0.9.1.tgz -C /srv/co-hub
+sudo tar -xzf ~/co-hub-0.9.2.tgz -C /srv/co-hub
 sudo chown -R co-hub:co-hub /srv/co-hub
 ```
 

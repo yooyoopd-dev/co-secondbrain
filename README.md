@@ -119,7 +119,7 @@ IP 주소)가 팀원 사이를 중계합니다. CO-Hub는 SQLite와 블롭 저�
 | **Gemini 읽기 경로** — 사내 전역 설정을 고쳐 MCP 를 열었다. 꺼져 있으면 답을 버린다 | 사내 확인 필요 |
 | Codex 어댑터 | 사내 환경 필요 |
 
-자동 검사 487건이 통과합니다 (앱 465 · 허브 22). 앱을 실제로 띄워 보는 스모크가 21/21,
+자동 검사 488건이 통과합니다 (앱 466 · 허브 22). 앱을 실제로 띄워 보는 스모크가 21/21,
 대비·채도 검사가 20/20, 아이콘 자산 검사가 14/14 입니다. 485건과 스모크는 리눅스와
 Windows 양쪽에서 돕니다. Windows 쪽은 **묶은 배포본을 띄워** 봅니다. 세부 마일스톤은
 [`docs/PLAN.md`](docs/PLAN.md) §12,
@@ -136,6 +136,7 @@ Windows 양쪽에서 돕니다. Windows 쪽은 **묶은 배포본을 띄워** �
 | [docs/HUB.md](docs/HUB.md) | CO-Hub 서버 — 데이터 모델, API, 동기화 알고리즘, 보안, 운영 |
 | [docs/HUB-SETUP.md](docs/HUB-SETUP.md) | **CO-Hub 설치** — Ubuntu PC 에 올리는 절차. SSH 원격 설치 포함 |
 | [docs/OFFLINE.md](docs/OFFLINE.md) | **오프라인 설치·운영 가이드** — 인터넷 없는 사내 PC 용 |
+| [docs/LOCAL-LLM.md](docs/LOCAL-LLM.md) | 로컬 LLM(Ollama)으로 질의를 돌리는 구조 검토 |
 | [docs/DESIGN-SYSTEM.md](docs/DESIGN-SYSTEM.md) | 디자인 토큰·컴포넌트 규칙 |
 | [docs/REFERENCE-llm-wiki.md](docs/REFERENCE-llm-wiki.md) | 기반이 된 Karpathy "LLM Wiki" 원문 정리 및 본 설계의 반영·변형 내역 |
 | [docs/REVIEW-graphify.md](docs/REVIEW-graphify.md) | 선행 사례 graphify 검토 — v0.3의 변경 근거 |
@@ -205,10 +206,17 @@ Jaro-Winkler 임계는 0.92에서 0.96으로 올려야 합니다.
 |---|---|---|
 | 19 | Codex 어댑터 (`--output-schema`) | **보류** — 사내 검증 불가 |
 | 20 | Gemini 가 내장 MCP 서버에 실제로 붙는지 확인 (`spikes/cli/gemini-mcp-check.mjs`) | `B1` — 사내 PC 에서 다시 |
+| 21 | 로컬 LLM 질의 경로 — 계측 넷 (`spikes/local/ollama-check.mjs`) | `B1` — 사내 PC 에서 한 번 |
+| 22 | 검색이 BM25 순위를 버리는 것을 고친다 (`core/search.ts`) | `A` — 21번이 이걸 전제한다 |
 
-20번 1회차는 표본이 아니었습니다. 종료 코드 41 은 Gemini 의 오류 봉투로, 인증이나
-쿼터에서 나는 코드입니다 (0.58.0 실측). 스크립트가 이제 그 사유를 한 줄로 내고 판정을
-비웁니다. 경위는 [`docs/ROADMAP.md`](docs/ROADMAP.md) §16.5.
+20번 두 회차 모두 표본이 아니었습니다. 사유는 **인증**입니다. 전역 Gemini 설정에
+`security.folderTrust` 를 넣으면서 형제인 `security.auth.selectedType` 이 같이 지워진
+것으로 보입니다. v0.9.1 에서 위키 갱신까지 멈춘 것도 같은 원인입니다. **판이 원인이
+아닙니다** — v0.9.1 은 위키 갱신이 쓰는 인자를 한 글자도 안 건드렸습니다. 대조한 내용은
+[`docs/ROADMAP.md`](docs/ROADMAP.md) §18.
+
+21 · 22번은 사내 PC 에 깔린 Ollama 로 질의를 돌리는 구조입니다. 검토 결과를
+[`docs/LOCAL-LLM.md`](docs/LOCAL-LLM.md) 에 적어 뒀습니다.
 
 17 · 18(추출기 · 엔티티 유사도 자가검사)은 스크립트가 끝났고 실행만 사내에서 합니다.
 절차는 [`docs/ROADMAP.md`](docs/ROADMAP.md) §13에 있습니다.
@@ -250,7 +258,7 @@ Windows가 못 띄웁니다. 같은 결함이 제품 코드(`core/agent/exec.ts`
 ### 받아 쓰는 법
 
 [릴리스](https://github.com/yooyoopd-dev/co-secondbrain/releases/latest)에서
-`co-secondbrain-<판>-portable.exe` 하나를 받아 두 번 누르십시오. 지금 판은 **v0.9.1**
+`co-secondbrain-<판>-portable.exe` 하나를 받아 두 번 누르십시오. 지금 판은 **v0.9.2**
 입니다. 사내 동기화 서버는 같은 자리의 `co-hub-<판>.tgz` 입니다. 개인 PC 에서 SSH 로 Ubuntu PC 에
 올리는 절차까지 [`docs/HUB-SETUP.md`](docs/HUB-SETUP.md)에 있습니다. 설치하지 않습니다.
 사내 PC 에 설치 권한이 없어도 됩니다. 새 판이 나오면 이전 판 exe 는 지웁니다 —

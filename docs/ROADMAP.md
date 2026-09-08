@@ -978,3 +978,78 @@ v0.9.1 을 쓰면서 나온 아홉 가지다. 여덟은 화면이고 하나는 �
 - 진행 막대와 인제스트 결과 팝업이 겹쳤다. 진행 막대는 가운데, 결과는 오른쪽이라
   창이 좁으면 만났다. 화면 아래 한 칸에 세로로 쌓아 어느 폭에서도 안 겹치게 했다.
   결과 팝업이 오른쪽에서 가운데로 옮겨 온 것이 이 변경의 대가다
+
+---
+
+## 18. 사내 1회차 인증 오류 — 우리 코드가 아니다 (2026-09-09)
+
+2회차 결과가 명확했다.
+
+```
+Please set an Auth method in your C:\Users\...\.gemini\settings.json or specify one of
+the following environment variables: GEMINI_API_KEY, GOOGLE_GENAI_USE_VERTEXAI, GOOGLE_GENAI_USE_GCA
+```
+
+같이 온 보고가 더 중요하다 — **v0.9.0 에서는 위키 갱신이 됐는데 v0.9.1 에서는 안 된다.**
+판이 원인처럼 보이는 상황이라 코드부터 봤다.
+
+### 18.1 v0.9.1 은 위키 갱신 경로의 인자를 안 건드렸다
+
+`gemini.ts` 의 `buildArgv(job.mcp !== undefined)` 가 새로 생겼다. 그런데 위키 갱신은
+`store.propose()` 이고 거기서는 `job.mcp` 를 안 넘긴다. 밀어 넣기 경로라 MCP 가 필요
+없기 때문이다. 그래서 `buildArgv(false)` 가 되고 **인자가 v0.9.0 과 글자까지 같다.**
+바뀐 것은 `onOutput` 과 `signal` 뿐이고 둘 다 인자에 안 들어간다.
+
+### 18.2 원인은 전역 설정 편집이다
+
+0.58.0 의 `validateNonInteractiveAuth` 를 읽었다. 인증을
+`settings.merged.security.auth.selectedType` 에서 찾고, 없으면 저 문구를 낸다.
+`security.folderTrust.enabled` 와 **같은 `security` 아래**다.
+
+시간 순서가 맞는다. v0.9.0 은 됐고 → 전역 설정에 `folderTrust` 를 넣었고 → 그 뒤로
+v0.9.1 과 스파이크가 둘 다 인증에서 막혔다. `security` 를 통째로 새로 쓰면 형제인
+`auth` 가 같이 지워진다. **판이 아니라 편집이 걸린 것이다.**
+
+고치는 법은 둘 중 하나다.
+
+```jsonc
+{
+  "security": {
+    "auth": { "selectedType": "..." },        // 지워진 것
+    "folderTrust": { "enabled": false }       // 넣은 것
+  }
+}
+```
+
+`selectedType` 값을 손으로 짐작하지 말고 터미널에서 `gemini` 를 한 번 띄워 인증
+방식을 고르면 CLI 가 알아서 적는다. 값은 `oauth-personal` · `gemini-api-key` ·
+`vertex-ai` · `cloud-shell` 중 하나다 (0.58.0 번들에서 확인).
+
+### 18.3 앱이 무엇을 하게 했나
+
+인증은 CLI 가 자기 설정에 들고 있고 앱은 거기 손대지 않는다. 그러니 앱이 할 수 있는
+것은 **무엇을 해야 하는지 알려 주는 것**뿐이다. `authHint()` 를 넣어 그 오류일 때만
+한 줄을 붙인다. 다른 오류에는 안 붙인다 — 늘 붙는 안내는 곧 안 읽힌다.
+
+---
+
+## 19. 로컬 LLM 으로 질의를 돌리는 구조 (검토, 2026-09-09)
+
+사내 PC 에 Ollama 와 Qwen2.5 가 깔렸다. [LLM 위키에 묻기] 한 가지만 로컬로 돌리는
+구조를 검토했다. 전문은 [`LOCAL-LLM.md`](LOCAL-LLM.md) 에 있고 요지는 셋이다.
+
+1. **네 번째 CLI 공급자로 넣지 않는다.** `AgentCli` 는 프로세스를 띄우고 MCP 로 위키를
+   당겨 가게 한다. Ollama 는 HTTP 서버이고 도구를 부르는 껍데기가 없다. 그 껍데기를
+   우리가 다시 쓰는 일이 된다
+2. **앱이 찾아서 프롬프트에 넣는다.** 요청에 적힌 `BM25 + BGE-M3 → Qwen2.5 주입` 이
+   그대로 맞다. MCP 가 빠지므로 폴더 신뢰 문제와도 무관해진다
+3. **재기 전에는 안 만든다.** 네 가지를 사내에서 한 번에 잰다
+   ([`spikes/local/ollama-check.mjs`](../spikes/local/ollama-check.mjs))
+
+검토하다 지금 코드에서 결함 하나를 찾았다. `core/search.ts` 의 `search()` 가 FTS5 에
+`ORDER BY rank`(= BM25) 로 묻고는, 결과를 `Set<rowid>` 에 담아 `WHERE rowid IN (...)`
+로 본문을 다시 읽는다. `IN` 은 순서를 보장하지 않으므로 **그 시점에 BM25 순위가
+사라진다.** 사람이 눈으로 훑는 화면에서는 티가 안 났다. 상위 k 개만 모델에게 주는
+구조에서는 이것이 곧 품질이다. 하이브리드를 얹기 전에 이것부터 고쳐야 한다.
+
+**아직 안 고쳤다.** 검색 결과 순서가 바뀌는 변경이라 릴리스와 같이 넣지 않았다.
