@@ -11,12 +11,26 @@ contextBridge.exposeInMainWorld('sb', {
   inbox: () => ipcRenderer.invoke(IPC.inbox),
   ingestInbox: (classification: string) => ipcRenderer.invoke(IPC.ingestInbox, classification),
   listSources: () => ipcRenderer.invoke(IPC.listSources),
+  sweepSources: () => ipcRenderer.invoke(IPC.sweepSources),
+  citedSources: () => ipcRenderer.invoke(IPC.citedSources),
   search: (q: string) => ipcRenderer.invoke(IPC.search, q),
   readSource: (id: string) => ipcRenderer.invoke(IPC.readSource, id),
   propose: (id: string) => ipcRenderer.invoke(IPC.propose, id),
   applyReview: (approved: string[]) => ipcRenderer.invoke(IPC.applyReview, approved),
   discardReview: () => ipcRenderer.invoke(IPC.discardReview),
+  holdReview: (approved: string[]) => ipcRenderer.invoke(IPC.holdReview, approved),
+  heldReview: () => ipcRenderer.invoke(IPC.heldReview),
+  resumeReview: () => ipcRenderer.invoke(IPC.resumeReview),
+  cancelAgent: () => ipcRenderer.invoke(IPC.cancelAgent),
+  // 유일한 밀어 주기 채널. 나머지는 전부 렌더러가 물어본다.
+  agentOutput: (cb: (chunk: string) => void) => {
+    const on = (_e: unknown, chunk: string) => cb(chunk);
+    ipcRenderer.on(IPC.agentOutput, on);
+    return () => ipcRenderer.removeListener(IPC.agentOutput, on);
+  },
+  taskProviders: () => ipcRenderer.invoke(IPC.taskProviders),
   editOp: (path: string, content: string) => ipcRenderer.invoke(IPC.editOp, path, content),
+  repairAnchors: () => ipcRenderer.invoke(IPC.repairAnchors),
   spendStatus: () => ipcRenderer.invoke(IPC.spendStatus),
   plan: () => ipcRenderer.invoke(IPC.plan),
   ask: (q: string) => ipcRenderer.invoke(IPC.ask, q),
@@ -36,6 +50,10 @@ contextBridge.exposeInMainWorld('sb', {
   resolveConflict: (pageId: string, merged: string) => ipcRenderer.invoke(IPC.resolveConflict, pageId, merged),
   settings: () => ipcRenderer.invoke(IPC.settings),
   setProvider: (id: string | null) => ipcRenderer.invoke(IPC.setProvider, id),
+  setAnswerWith: (mode: string) => ipcRenderer.invoke(IPC.setAnswerWith, mode),
+  setLocalConfig: (cfg: unknown) => ipcRenderer.invoke(IPC.setLocalConfig, cfg),
+  localInfo: () => ipcRenderer.invoke(IPC.localInfo),
+  buildVectors: () => ipcRenderer.invoke(IPC.buildVectors),
   coreContext: () => ipcRenderer.invoke(IPC.coreContext),
   setCoreContext: (ctx: unknown) => ipcRenderer.invoke(IPC.setCoreContext, ctx),
   logs: () => ipcRenderer.invoke(IPC.logs),

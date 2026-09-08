@@ -207,7 +207,7 @@ export async function importSource(vault: Vault, filePath: string): Promise<stri
 }
 
 /** log.md 에 한 줄 추가한다. 원문이 제시한 grep 가능한 접두사 형식. */
-export async function appendLog(vault: Vault, kind: 'ingest' | 'query' | 'lint', title: string): Promise<void> {
+export async function appendLog(vault: Vault, kind: 'ingest' | 'query' | 'lint' | 'sweep', title: string): Promise<void> {
   const date = new Date().toISOString().slice(0, 10);
   const line = `## [${date}] ${kind.padEnd(6)}| ${title}\n`;
   await fs.appendFile(safeJoin(vault.root, 'log.md'), line, 'utf8');

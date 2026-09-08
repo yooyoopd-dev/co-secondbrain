@@ -19,10 +19,22 @@ export interface McpLaunch {
   env?: Record<string, string>;
 }
 
-export function mcpConfig(launch: McpLaunch): object {
+/**
+ * 설정 한 벌. 모양은 두 CLI 가 같다 — `mcpServers` 아래 이름 하나.
+ *
+ * `trust` 는 Gemini 것이다. 도구 호출마다 확인을 묻지 않게 한다 (`gemini mcp add --trust`
+ * 가 쓰는 칸이다, 2026-09-09 실측). 우리 서버는 우리 실행 파일의 일부이고 읽기만 하므로
+ * 물어볼 것이 없다. **Claude Code 쪽에는 안 붙인다** — 그 설정 스키마에 없는 칸이다.
+ */
+export function mcpConfig(launch: McpLaunch, trust = false): object {
   return {
     mcpServers: {
-      [SERVER_NAME]: { command: launch.command, args: launch.args, ...(launch.env ? { env: launch.env } : {}) },
+      [SERVER_NAME]: {
+        command: launch.command,
+        args: launch.args,
+        ...(launch.env ? { env: launch.env } : {}),
+        ...(trust ? { trust: true } : {}),
+      },
     },
   };
 }

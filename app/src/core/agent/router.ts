@@ -50,16 +50,39 @@ export const DEFAULT_ROUTING: Record<TaskKind, RoutingRule> = {
 export const SCHEMA_ENFORCING: readonly ProviderId[] = ['claude-code', 'codex'];
 
 /**
- * 내장 MCP 서버에 붙일 수 있는 공급자.
+ * 내장 MCP 서버에 붙일 수 있는 공급자. **라우팅이 보내도 되는가**를 정한다.
  *
- * **Gemini 는 못 붙는다 (2026-09-05 실측).** 격리 작업 디렉터리에 프로젝트 설정을 써도
- * "folder is untrusted" 로 MCP 를 끈다. `--skip-trust` 는 대화형 확인만 건너뛸 뿐
- * MCP 를 살리지 못하고, 신뢰 판정은 사용자 수준 설정에 있다. 그걸 고치려면 사내 PC 의
- * 기존 설정을 건드려야 해서 안 한다 (PLAN.md §7.2 가 `--mcp-config` 를 고른 이유와 같다).
+ * Gemini 는 2026-09-05 실측에서 못 붙었다. 격리 작업 디렉터리에 프로젝트 설정을 써도
+ * "folder is untrusted" 로 MCP 를 끄고, `--skip-trust` 는 대화형 확인만 건너뛴다.
+ * 신뢰 판정이 사용자 수준 설정에 있어서 앱이 어쩌지 못했다 (M2-PLAN.md §12.2).
+ *
+ * 2026-09-09 에 사용자가 사내 PC 의 전역 설정에 `security.folderTrust.enabled: false` 를
+ * 넣었고, 그것으로 **신뢰 게이트는 풀렸다.** 그래서 한동안 여기에 Gemini 를 넣어 뒀다.
+ *
+ * **2026-09-10 사내 측정에서 다시 뺐다.** W3c 결과가 이렇게 나왔다.
+ *
+ * ```
+ * PASS  폴더 신뢰가 MCP 를 끄지 않는다
+ * FAIL  모델이 내장 서버의 도구를 불렀다
+ * ```
+ *
+ * 서버는 붙었는데 모델이 도구를 안 부른다. 이것이 `mcpDisabled` 보다 나쁘다 —
+ * MCP 가 꺼진 것은 stderr 로 알아채고 답을 버릴 수 있지만, **붙어 놓고 안 쓴 것은
+ * 알아챌 방법이 없다.** 그대로 두면 위키를 안 읽고 아는 대로 답한 것이 인용까지 달고
+ * 화면에 뜬다. 기대에 맞게 규칙을 고치지 않는다 (CLAUDE.md §9).
  *
  * Codex 는 아직 확인하지 못했다. 확인 전에는 넣지 않는다.
  */
 export const MCP_CAPABLE: readonly ProviderId[] = ['claude-code'];
+
+/**
+ * MCP 왕복을 **실제로 확인한** 공급자. 되던 경로를 바꿔도 되는지를 정한다.
+ *
+ * `lint.judgment` 는 밀어 넣기로 이미 돌고 있고 결과가 같다 (M2-PLAN.md §13.1).
+ * Gemini 의 MCP 는 사내 확인 전이라 그 경로를 여기서 갈아 끼우지 않는다 — 되던 것이
+ * 깨지는 손해가 아껴지는 토큰보다 크다. 사내에서 확인되면 이 목록을 지운다.
+ */
+export const MCP_VERIFIED: readonly ProviderId[] = ['claude-code'];
 
 export interface RouteContext {
   /** `detect()` 로 확인한 설치·인증된 공급자 */

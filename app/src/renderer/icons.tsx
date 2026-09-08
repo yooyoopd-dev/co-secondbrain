@@ -20,6 +20,8 @@ const PATHS = {
     'M12 2.6v3.6', 'M12 17.8v3.6', 'M2.6 12h3.6', 'M17.8 12h3.6',
   ],
   user: ['M12 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7', 'M5 20a7 7 0 0 1 14 0'],
+  refresh: ['M20.5 12a8.5 8.5 0 1 1-2.49-6.01', 'M20.5 4v4.5H16'],
+  check: ['M5 12.5 10 17.5 19.5 6.5'],
 } as const;
 
 export type IconName = keyof typeof PATHS;

@@ -73,6 +73,18 @@ export function planWork(manifest: Manifest, sources: readonly SourceState[]): W
   return plan;
 }
 
+/**
+ * 원본 하나를 manifest 에서 뺀다. 원본 파일이 사라졌고 위키도 안 쓰는 경우다.
+ *
+ * 항목의 열쇠는 내용 해시라 `sourceId` 로는 여러 개가 걸릴 수 있다 —
+ * 같은 문서를 고쳐 가며 여러 번 넣었으면 해시가 그만큼 있다. 전부 뺀다.
+ */
+export function forgetSource(m: Manifest, sourceId: string): Manifest {
+  const entries: Record<string, ManifestEntry> = {};
+  for (const [k, e] of Object.entries(m.entries)) if (e.sourceId !== sourceId) entries[k] = e;
+  return { ...m, entries };
+}
+
 /** 인제스트 직후. 아직 변경안은 없다. */
 export function recordSource(m: Manifest, s: SourceState): Manifest {
   const prev = m.entries[s.contentHash];

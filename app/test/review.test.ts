@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import pathMod from 'node:path';
 import { diffLines, diffStat, MAX_LINES } from '../src/core/diff.ts';
-import { buildReview, canApply, selectOps, GLOBAL_PATH } from '../src/core/review.ts';
+import { applyBlocker, buildReview, canApply, dropFlagged, selectOps, GLOBAL_PATH } from '../src/core/review.ts';
 import { applyChangeSet, type ChangeSet } from '../src/core/changeset.ts';
 import { pageHash, serializePage } from '../src/core/page.ts';
 import { createVault } from '../src/core/vault.ts';
@@ -356,4 +356,23 @@ test('편집한 내용이 승인 시 그대로 디스크에 간다', async () =>
   const res = await applyChangeSet(v, cs, ANCHORS);
   assert.deepEqual(res.applied, [path]);
   assert.equal(await fs.readFile(pathMod.join(v.root, path), 'utf8'), edited);
+});
+
+test('막는 것이 무엇인지 경로까지 알려 준다', async () => {
+  const v = await vault();
+  const good = { op: 'create' as const, path: '02_NOTES/entities/a.md', baseHash: null, content: OK_PAGE };
+  // 관문 5 — 원본에 없는 앵커를 인용한 페이지. 사내에서 실제로 이것에 막혔다.
+  const broken = md('비컴', [{ text: '납품한다.', source: 'src-kickoff#slide-99', confidence: 'EXTRACTED' }], '납품한다.[^src-kickoff#slide-99]');
+  const bad = { op: 'create' as const, path: '02_NOTES/entities/b.md', baseHash: null, content: broken };
+  const r = await buildReview(v, { summary: '둘', ops: [good, bad] }, ANCHORS);
+  assert.ok(r.ops[1]!.violations.some((x) => x.gate === 5), JSON.stringify(r.ops[1]!.violations));
+
+  // 문제 있는 것을 승인 목록에 넣으면 그 경로를 준다 — 화면이 그 카드로 데려간다
+  const blocked = applyBlocker(r, [good.path, bad.path]);
+  assert.equal(blocked?.path, bad.path);
+
+  // 문제 있는 것만 빼면 나머지는 그대로 간다
+  const kept = dropFlagged(r, [good.path, bad.path]);
+  assert.deepEqual(kept, [good.path]);
+  assert.equal(applyBlocker(r, kept), null);
 });

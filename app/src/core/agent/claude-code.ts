@@ -86,6 +86,7 @@ export function createClaudeCode(exec: Exec = realExec): AgentCli {
     id: 'claude-code',
     supportsSchema: true,
     conventionFile: 'CLAUDE.md',
+    mcpConfigFile: 'mcp.json',
 
     async detect() {
       try {
@@ -103,7 +104,9 @@ export function createClaudeCode(exec: Exec = realExec): AgentCli {
       for (const k of STRIPPED_ENV) delete env[k];
       const argv = buildArgv(job, schema, randomUUID());
       try {
-        const { stdout, stderr, code } = await exec(BIN, argv, { cwd: job.workdir, env, stdin: job.prompt });
+        const { stdout, stderr, code } = await exec(BIN, argv, {
+          cwd: job.workdir, env, stdin: job.prompt, onOutput: job.onOutput, signal: job.signal,
+        });
         if (!stdout.trim()) {
           return {
             ok: false, data: null, sessionId: null, usage: ZERO_USAGE,

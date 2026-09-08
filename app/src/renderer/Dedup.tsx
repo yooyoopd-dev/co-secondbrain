@@ -80,9 +80,20 @@ export function DedupPanel({
 }
 
 /** 레일 버튼. 후보가 있을 때만 개수를 붙인다 — 0 을 늘 띄워 두면 곧 안 보게 된다 */
-export function DedupButton({ count, busy, onClick }: { count: number | null; busy: boolean; onClick: () => void }) {
+export function DedupButton({
+  count,
+  busy,
+  onClick,
+  style,
+}: {
+  count: number | null;
+  busy: boolean;
+  onClick: () => void;
+  /** 레일에서 옆 버튼들과 같은 폭·글자 크기로 맞출 때 넘긴다 */
+  style?: React.CSSProperties;
+}) {
   return (
-    <button style={{ width: '100%' }} disabled={busy} onClick={onClick} title="이름이 비슷한 페이지 쌍">
+    <button style={{ width: '100%', ...style }} disabled={busy} onClick={onClick} title="이름이 비슷한 페이지 쌍">
       중복 후보{count !== null && count > 0 ? ` ${count}` : ''}
     </button>
   );

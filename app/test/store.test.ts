@@ -108,20 +108,60 @@ test('원본 전문을 앵커째로 되읽을 수 있다 (원문 뷰어용)', as
 
 /* ---------------- 설정 · 내 맥락 ---------------- */
 
+/** 위키 페이지 한 장을 디스크에 놓는다. citedSources 는 파일만 본다. */
+async function putPage(root: string, name: string, body: string, claimSource: string | null = null): Promise<void> {
+  const front = [
+    '---',
+    `id: ent-${name}`,
+    'type: entity',
+    `title: ${name}`,
+    'summary: 요약.',
+    'classification: internal',
+    ...(claimSource ? ['claims:', '  - text: 주장.', `    source: ${claimSource}`, '    confidence: EXTRACTED'] : []),
+    'generated_by: claude-code',
+    'updated: 2026-09-05T00:00:00.000Z',
+    'updated_by: app',
+    '---',
+  ].join('\n');
+  await fs.mkdir(path.join(root, '02_NOTES/entities'), { recursive: true });
+  await fs.writeFile(path.join(root, `02_NOTES/entities/${name}.md`), `${front}\n\n${body}\n`, 'utf8');
+}
+
+test('반영 표시는 제안이 아니라 위키의 인용을 본다', async () => {
+  const { s, root } = await opened();
+  // 인제스트만 한 상태. 아직 위키에 아무것도 없다.
+  await s.ingest([f('kickoff.docx'), f('meeting.vtt')]);
+  assert.deepEqual(await s.citedSources(), []);
+
+  // 본문에서 인용한 것과 front-matter 의 claims 로만 인용한 것 둘 다 잡는다.
+  await putPage(root, '가', '주 협력사다.[^src-kickoff#slide-3]');
+  await putPage(root, '나', '본문에는 인용이 없다.', 'src-meeting#t-1');
+  assert.deepEqual((await s.citedSources()).sort(), ['src-kickoff', 'src-meeting']);
+  s.close();
+});
+
 test('설정은 Vault 경로와 판을 준다. 안 열었으면 null 이다', async () => {
   const s = new Store();
   const before = await s.settings('9.9.9');
   assert.equal(before.version, '9.9.9');
   assert.equal(before.vaultRoot, null);
-  assert.equal(before.personal, null);
+  assert.equal(before.co, null);
 
   const root = await tmp();
   await s.open(root, { id: 'personal', title: '개인 Vault' });
   const after = await s.settings('9.9.9');
   assert.equal(after.vaultRoot, root);
   assert.equal(after.vaultTitle, '개인 Vault');
-  assert.equal(after.personal, true);
+  assert.equal(after.co, false);
   assert.deepEqual(after.providers.map((p) => p.id), ['claude-code', 'gemini', 'codex']);
+});
+
+test('화면이 만든 Vault 는 id 가 폴더 이름이어도 개인으로 나온다', async () => {
+  // main.ts 의 pickVault 는 `{ id: 폴더이름 }` 으로 만든다. 종류를 `id === 'personal'`
+  // 로 보던 때는 이 Vault 가 전부 CO 영역으로 나왔다. 이제 허브 부착 여부로 본다.
+  const s = new Store();
+  await s.open(await tmp(), { id: '내문서', title: '내문서' });
+  assert.equal((await s.settings('9.9.9')).co, false);
 });
 
 test('Vault 를 닫으면 설정에서도 사라진다', async () => {
@@ -166,4 +206,125 @@ test('내 맥락은 안 적었으면 빈 것이고, 적으면 Vault 안 파일�
   const md = await fs.readFile(path.join(root, '09_TEMPLATES/me.md'), 'utf8');
   assert.match(md, /구매팀 대리\./);
   assert.deepEqual(await s.coreContext(), { who: '구매팀 대리.', why: '', output: '근거 딸린 한 문단.' });
+});
+
+/* ---------- 전체 보류 (검토 화면) ---------- */
+
+/** CLI 를 안 부르고 검토 대기를 만든다. archiveAnswer 가 답변을 그대로 ChangeSet 으로 만든다 */
+async function withPending() {
+  const { s, root } = await opened();
+  await s.ingest([f('kickoff.docx')]);
+  const review = await s.archiveAnswer('킥오프 일정은?', {
+    answer: '3월 착수로 확정했습니다.',
+    claims: [{ text: '3월 착수로 확정', source: 'src-kickoff#2026 ACME 프로젝트' }],
+    pages: [],
+  });
+  return { s, root, review };
+}
+
+test('전체 보류하면 파일로 남고 다시 열린다', async () => {
+  const { s, root, review } = await withPending();
+  const p = review.ops[0]!.op.path;
+
+  await s.holdReview([p]);
+  // 보류는 `.sb/` 아래다. 위키에도 동기화 대상에도 안 들어간다.
+  assert.ok((await fs.stat(path.join(root, '.sb/held-review.json'))).isFile());
+  // 보류했으면 지금 검토 중인 것은 없다
+  await assert.rejects(() => s.editOp(p, '아무거나'), /검토 중인 변경안이 없습니다/);
+
+  const info = await s.heldReviewInfo();
+  assert.equal(info?.ops, 1);
+
+  const back = await s.resumeReview();
+  assert.deepEqual(back?.approved, [p]);
+  assert.equal(back?.review.ops.length, 1);
+  s.close();
+});
+
+test('보류한 것은 적용해도 버려도 사라진다', async () => {
+  const { s, root, review } = await withPending();
+  const p = review.ops[0]!.op.path;
+  const held = path.join(root, '.sb/held-review.json');
+
+  await s.holdReview([p]);
+  await s.discardReview();
+  assert.equal(await s.heldReviewInfo(), null);
+  await assert.rejects(() => fs.stat(held));
+
+  // 적용 쪽도 같다 — 적용했는데 다음에 또 뜨면 안 된다
+  const again = await s.archiveAnswer('킥오프 일정은?', {
+    answer: '3월 착수로 확정했습니다.',
+    claims: [{ text: '3월 착수로 확정', source: 'src-kickoff#2026 ACME 프로젝트' }],
+    pages: [],
+  });
+  await s.holdReview([again.ops[0]!.op.path]);
+  await s.resumeReview();
+  const res = await s.applyReview([again.ops[0]!.op.path]);
+  assert.equal(res.applied.length, 1, JSON.stringify(res));
+  await assert.rejects(() => fs.stat(held));
+  s.close();
+});
+
+test('보류 파일이 깨져 있으면 없는 것으로 본다', async () => {
+  const { s, root } = await opened();
+  await fs.writeFile(path.join(root, '.sb/held-review.json'), '{ JSON 아님', 'utf8');
+  assert.equal(await s.heldReviewInfo(), null);
+  assert.equal(await s.resumeReview(), null);
+  s.close();
+});
+
+test('도는 것이 없으면 취소는 false 다', async () => {
+  const { s } = await opened();
+  assert.equal(s.cancelAgent(), false);
+  s.close();
+});
+
+test('작업별 공급자를 미리 알려 준다', async () => {
+  const { s } = await opened();
+  const t = await s.taskProviders();
+  // 설치 여부는 이 기계에 달렸다. 모양만 본다 — 거절이면 사유가 있어야 한다.
+  for (const p of [t.query, t.ingest]) {
+    assert.ok(p.ok ? p.provider.length > 0 : p.reason.length > 0, JSON.stringify(p));
+  }
+  s.close();
+});
+
+/**
+ * 사람이 `01_SOURCES/` 에서 파일을 지웠을 때. 앱은 파일을 안 지우고 따라가기만 한다.
+ *
+ * 위키가 인용 중인 원본은 추출물을 남긴다 — 그것이 관문 5 의 근거라서, 지우면 그 원본을
+ * 인용한 페이지가 전부 검사에서 막힌다. 원문 파일이 없어진 것과 "그런 주장은 없었다" 는
+ * 다른 사건이다.
+ */
+test('인용이 없는 원본을 지우면 목록에서 빠진다', async () => {
+  const { s, root } = await opened();
+  await s.ingest([f('kickoff.docx'), f('meeting.vtt')]);
+  await fs.rm(path.join(root, '01_SOURCES/meeting.vtt'));
+
+  // 지우기만 해도 표시는 바로 바뀐다
+  const before = await s.listSources();
+  assert.equal(before.find((x) => x.filename === 'meeting.vtt')?.missing, true);
+
+  const r = await s.sweepSources();
+  assert.deepEqual(r.removed, ['meeting.vtt']);
+  assert.deepEqual(r.kept, []);
+  assert.deepEqual((await s.listSources()).map((x) => x.filename), ['kickoff.docx']);
+  await assert.rejects(fs.stat(path.join(root, '.sb/extracted/src-meeting.json')));
+  assert.equal(s.search('회의').filter((h) => h.sourceId === 'src-meeting').length, 0);
+  s.close();
+});
+
+test('위키가 인용 중인 원본은 파일이 없어져도 근거를 남긴다', async () => {
+  const { s, root } = await opened();
+  await s.ingest([f('kickoff.docx')]);
+  await putPage(root, '가', '주 협력사다.[^src-kickoff#slide-3]');
+  await fs.rm(path.join(root, '01_SOURCES/kickoff.docx'));
+
+  const r = await s.sweepSources();
+  assert.deepEqual(r.removed, []);
+  assert.deepEqual(r.kept, ['kickoff.docx']);
+  assert.equal((await s.listSources())[0]?.missing, true, '사라진 표시가 없다');
+  assert.ok((await fs.stat(path.join(root, '.sb/extracted/src-kickoff.json'))).isFile());
+  assert.deepEqual(await s.citedSources(), ['src-kickoff']);
+  s.close();
 });

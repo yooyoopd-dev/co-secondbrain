@@ -116,3 +116,29 @@ test('긴 답변도 요약 상한을 넘지 않는다', () => {
   assert.ok(page.front.summary.length <= SUMMARY_MAX);
   assert.deepEqual(validateShape(toChangeSet(Q, long, NOW)), []);
 });
+
+/**
+ * 사내 1회차. 로컬 모델이 본문 표기를 그대로 베껴 `^src-...` 를 냈다 (ROADMAP §24).
+ * 내용은 맞는데 껍데기만 다른 것을 형식 오류로 막으면 사람이 손으로 고쳐야 한다.
+ */
+test('앵커의 대괄호와 캐럿을 벗기고 본다', () => {
+  const raw = {
+    answer: '3월 31일입니다.',
+    claims: [
+      { text: '가.', source: '^src-20260903-esg로드쇼-투자자질의-분석#p-1' },
+      { text: '나.', source: '[^src-kickoff#slide-12]' },
+      { text: '다.', source: ' src-meeting#t-2 ' },
+    ],
+  };
+  const { answer, reason } = parseAnswer(raw);
+  assert.equal(reason, null);
+  assert.deepEqual(answer?.claims.map((c) => c.source), [
+    'src-20260903-esg로드쇼-투자자질의-분석#p-1',
+    'src-kickoff#slide-12',
+    'src-meeting#t-2',
+  ]);
+});
+
+test('껍데기를 벗겨도 형식이 아니면 막는다', () => {
+  assert.equal(parseAnswer({ answer: '가', claims: [{ text: '나', source: '[^src-kickoff]' }] }).answer, null);
+});

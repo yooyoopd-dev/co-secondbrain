@@ -91,3 +91,30 @@ test('snippet 은 질의어 주변을 자른다', () => {
   assert.ok(snippet('가'.repeat(200) + '에이콤' + '나'.repeat(200), '에이콤').includes('에이콤'));
   assert.ok(snippet('짧은 글', '없는말').length <= 10);
 });
+
+/**
+ * ROADMAP 22번. FTS5 가 계산한 BM25 순위를 `WHERE rowid IN (...)` 재읽기가 버리고 있었다.
+ * `IN` 은 순서를 보장하지 않아 실제로는 rowid 오름차순으로 돌아왔다 — 즉 **먼저 넣은 것이
+ * 먼저 나왔다.** 그래서 제일 잘 맞는 청크를 맨 나중에 넣고 그것이 첫 줄에 오는지 본다.
+ */
+test('BM25 순위가 재읽기에서 안 사라진다', () => {
+  const idx = new SearchIndex(new DatabaseSync(':memory:'));
+  const filler = '계약 조건에 대한 긴 설명이 이어진다. ' + '내용이 계속된다. '.repeat(30);
+  idx.indexSource(
+    'src-long',
+    [1, 2, 3, 4, 5].map((i) => chunk('src-long', `p-${i}`, filler)),
+  );
+  // 짧고 정확한 청크. BM25 는 이쪽을 위로 올린다
+  idx.indexSource('src-short', [chunk('src-short', 'p-1', '계약')]);
+
+  const hits = idx.search('계약');
+  assert.equal(hits[0]?.sourceId, 'src-short', hits.map((h) => h.sourceId).join(' → '));
+});
+
+test('결과에 같은 청크가 두 번 안 나온다', () => {
+  const idx = fixture();
+  // 접두 색인과 trigram 색인 양쪽에 걸리는 3자 이상 질의
+  const hits = idx.search('갱신일');
+  const keys = hits.map((h) => `${h.sourceId}#${h.locator}`);
+  assert.equal(new Set(keys).size, keys.length, keys.join(' · '));
+});

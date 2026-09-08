@@ -12,6 +12,11 @@
 
 ## 배포
 
+릴리스의 `co-hub-<판>.tgz` 를 받아 푸는 것이 가장 짧다. 개인 PC 에서 SSH 로 올리는
+절차까지 [`docs/HUB-SETUP.md`](../docs/HUB-SETUP.md) §1 에 있다.
+
+직접 빌드해서 올릴 때는 이렇게 한다.
+
 ```
 npm run build                       # dist/ 생성
 sudo mkdir -p /srv/co-hub && sudo cp -r dist /srv/co-hub/
